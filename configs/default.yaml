@@ -1,0 +1,32 @@
+train: 
+  seed: 1234
+  output_directory: 'training_log'
+  output_name: 'base'
+  data_path: '/ssd/LibriSpeech/train-clean-100'
+  training_files: '/home/miseul/cousework/it_hgkang/selectra/filelists/libri_train.txt'
+  validation_files: '/home/miseul/cousework/it_hgkang/selectra/filelists/libri_val.txt'
+  batch_size: 64
+
+data:
+  sampling_rate: 16000
+
+model:
+  n_symbols: 27 # alphabet (26) + blank (1)
+  symbols_embedding_dim: 256
+  hidden_dim: 512
+  dprenet_dim: 256
+  postnet_dim: 256
+  ff_dim: 1024
+  n_heads: 4
+  n_layers: 6
+  n_postnet_layers: 5
+
+optimization:
+  lr: 384**-0.5
+  warmup_steps: 4000
+  grad_clip_thresh: 1.0
+  batch_size: 3
+  accumulation: 2
+  iters_per_validation: 2000
+  iters_per_checkpoint: 10000
+  train_steps: 200000
