@@ -6,10 +6,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .utils import pad_to_multiple, compute_mask_indices
+from .augments import add_gauss
 
 class Selectra(nn.Module):
     def __init__(self, 
-                 embed = 512, enc_emb = 768,
+                 embed = 512, enc_emb = 768, encoder_layers = 12,
                  mask_prob = 0.65, mask_length = 10):
 
         super().__init__()
@@ -23,64 +24,47 @@ class Selectra(nn.Module):
 
         feat_enc_layers = [(512, 10, 5)] + \
                 [(512, 3, 2)] * 4 + [(512,2,2)] + [(512,2,2)]
-
-        self.feat_enc = FeatureEncoder(
+        self.feat_enc = FeatureEncoder(self.enc_emb,
             conv_layers=feat_enc_layers, dropout=0.0, conv_bias=False)
 
-        self.layer_norm = nn.LayerNorm(self.embed)
-        self.post_extract_proj = nn.Linear(self.embed, self.enc_emb)
+        self.encoder = TransformerEncoder(encoder_layers)
 
-        self.encoder = TransformerEncoder()
-    
-    def apply_mask(
-        self,
-        x,
-        padding_mask,
-        mask_indices=None,
-    ):
-        B, T, C = x.shape
+    def forward(self, x, padding_mask = None, mask = False):
+        # TODO add more variety
+        corr_x = add_gauss(x)
 
-        if self.mask_prob > 0:
-            if mask_indices is None:
-                mask_indices = compute_mask_indices(
-                    (B, T), padding_mask,
-                    self.mask_prob, self.mask_length,
-                    'static', 0.,
-                    min_masks=2, no_overlap=False, min_space=1,
-                    require_same_masks=True, mask_dropout=0.
-                )
-                mask_indices = torch.from_numpy(mask_indices).to(x.device)
-            x[mask_indices] = self.mask_emb
-
-        else:
-            mask_indices = None
-
-        return x, mask_indices
-
-    def forward(self, source, padding_mask = None, mask = False):
-        features = self.feat_enc(source)
-
-        features = features.transpose(1, 2)
-        features = self.layer_norm(features)
-        features = self.post_extract_proj(features)
+        x = self.feat_enc(x)
+        with torch.no_grad():
+            corr_x = self.feat_enc(corr_x)
 
         if mask:
-            x, mask_indices = self.apply_mask(features, padding_mask)
+            B, T, C = x.shape
+            mask_indices = compute_mask_indices(
+                (B, T), padding_mask,
+                self.mask_prob, self.mask_length,
+                'static', 0.,
+                min_masks=2, no_overlap=False, min_space=1,
+                require_same_masks=True, mask_dropout=0.
+            )
+            mask_indices = torch.from_numpy(mask_indices).to(x.device)
 
-        x, layer_results = self.encoder(features)
+            x_merged = x
+            x_merged[mask_indices] = corr_x[mask_indices] 
+
+        x, layer_results = self.encoder(x_merged)
 
         return x
 
 class FeatureEncoder(nn.Module):
-    def __init__(self,
+    def __init__(self, out_d,
                  conv_layers: List[Tuple[int, int, int]],
                  dropout: float = 0.0,
                  conv_bias: bool = False):
-        super().__init__()
 
-        in_d = 1
+        super().__init__()
         self.conv_layers = nn.ModuleList()
 
+        in_d = 1
         for i, cl in enumerate(conv_layers):
             (dim, k, stride) = cl
             
@@ -91,22 +75,26 @@ class FeatureEncoder(nn.Module):
             self.conv_layers.append(convs)
             in_d = dim
 
+        self.layer_norm = nn.LayerNorm(in_d)
+        self.post_proj = nn.Linear(in_d, out_d)
+
     def forward(self, x):
         x = x.unsqueeze(1)
 
         for conv in self.conv_layers:
             x = conv(x)
+        
+        x = x.transpose(1, 2)
+        x = self.layer_norm(x)
+        x = self.post_proj(x)
 
         return x
 
 def make_conv_pos(e, k, g):
     pos_conv = nn.Conv1d(
-        e,
-        e,
-        kernel_size=k,
-        padding=k // 2,
-        groups=g,
-    )
+        e, e, kernel_size=k,
+        padding=k // 2, groups=g)
+
     dropout = 0
     std = math.sqrt((4 * (1.0 - dropout)) / (k * e))
     nn.init.normal_(pos_conv.weight, mean=0, std=std)
@@ -118,22 +106,18 @@ def make_conv_pos(e, k, g):
     return pos_conv
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, dropout: float = 0.1):
+    def __init__(self, encoder_layers = 12, dropout: float = 0.1):
         super().__init__()
 
-        self.embedding_dim = 768
-        self.encoder_layers = 12
+        self.embed_dim = 768
+        self.encoder_layers = encoder_layers
 
-        self.pos_conv = make_conv_pos(
-            self.embedding_dim,
-            128,
-            16
-        )
+        self.pos_conv = make_conv_pos(self.embed_dim, 128, 16)
 
         self.layers = nn.ModuleList(
             [TransformerEncoderLayer() for _ in range(self.encoder_layers)]
         )
-        self.layer_norm = nn.LayerNorm(self.embedding_dim)
+        self.layer_norm = nn.LayerNorm(self.embed_dim)
         self.layerdrop = 0.05
 
         #self.apply(init_bert_params)
@@ -230,13 +214,13 @@ class TransformerEncoderLayer(nn.Module):
 
         super().__init__()
         # Initialize parameters
-        self.embedding_dim = embedding_dim
+        self.embed_dim = embedding_dim
         self.dropout = dropout
         self.activation_dropout = activation_dropout
 
         # Initialize blocks
         self.self_attn = nn.MultiheadAttention(
-            self.embedding_dim,
+            self.embed_dim,
             num_attention_heads,
             dropout=attention_dropout,
             #self_attention=True,
@@ -247,12 +231,12 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout3 = nn.Dropout(dropout)
 
         # layer norm associated with the self attention layer
-        self.self_attn_layer_norm = nn.LayerNorm(self.embedding_dim)
-        self.fc1 = nn.Linear(self.embedding_dim, ffn_embedding_dim)
-        self.fc2 = nn.Linear(ffn_embedding_dim, self.embedding_dim)
+        self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
+        self.fc1 = nn.Linear(self.embed_dim, ffn_embedding_dim)
+        self.fc2 = nn.Linear(ffn_embedding_dim, self.embed_dim)
 
         # layer norm associated with the position wise feed-forward NN
-        self.final_layer_norm = nn.LayerNorm(self.embedding_dim)
+        self.final_layer_norm = nn.LayerNorm(self.embed_dim)
 
     def forward(
         self,

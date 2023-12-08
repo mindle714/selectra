@@ -5,10 +5,71 @@
 
 import math
 from typing import Optional, Tuple
+from functools import partial
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torchaudio.transforms import MelScale, Spectrogram
+
+class LogMelSpec(torch.nn.Module):
+    def __init__(self,
+                 sample_rate=16000,
+                 win_ms=25, hop_ms=10,
+                 n_freq=201, n_mels=40,
+                 **kwargs):
+
+        super(LogMelSpec, self).__init__()
+        self.eps = 1e-10 
+
+        win = round(win_ms * sample_rate / 1000)
+        hop = round(hop_ms * sample_rate / 1000)
+        n_fft = (n_freq - 1) * 2
+        self._win_args = {"n_fft": n_fft, "hop_length": hop, "win_length": win}
+        self.register_buffer("_window", torch.hann_window(win))
+
+        self._stft_args = {
+            "center": True,
+            "pad_mode": "reflect",
+            "normalized": False,
+            "onesided": True,
+        }
+        # stft_args: same default values as torchaudio.transforms.Spectrogram & librosa.core.spectrum._spectrogram
+        self._stft = partial(torch.stft, **self._win_args, **self._stft_args)
+        self._melscale = MelScale(sample_rate=sample_rate, n_mels=n_mels)
+        self._istft = partial(torch.istft, **self._win_args, **self._stft_args)
+
+    def _magphase(self, spectrogram):
+        # Replace the deprecated private member function self._magphase
+        # Ref. https://github.com/pytorch/audio/issues/1337
+        # original: `self._magphase = partial(torchaudio.functional.magphase, power=2)`
+        spectrogram = torch.view_as_complex(spectrogram)
+        return spectrogram.abs().pow(exponent=2), spectrogram.angle()
+
+    def forward(self, wavs):
+        complx = self._stft(wavs, window=self._window)
+        linear, phase = self._magphase(complx)
+        mel = self._melscale(linear)
+        return (mel + self.eps).log()
+
+    def istft(self, linears=None, phases=None, linear_power=2, complxs=None):
+        assert complxs is not None or (linears is not None and phases is not None)
+        # complxs: (*, n_freq, max_feat_len, 2) or (*, max_feat_len, n_freq * 2)
+        # linears, phases: (*, max_feat_len, n_freq)
+
+        if complxs is None:
+            linears, phases = self._transpose_list([linears, phases])
+            complxs = linears.pow(1 / linear_power).unsqueeze(-1) * torch.stack(
+                [phases.cos(), phases.sin()], dim=-1
+            )
+        if complxs.size(-1) != 2:
+            # treat complxs as: (*, max_feat_len, n_freq * 2)
+            shape = complxs.size()
+            complxs = complxs.view(*shape[:-1], -1, 2).transpose(-2, -3).contiguous()
+        # complxs: (*, n_freq, max_feat_len, 2)
+
+        return self._istft(complxs, window=self._window)
+        # return: (*, max_wav_len)
 
 def pad_to_multiple(x, multiple, dim=-1, value=0):
     # Inspired from https://github.com/lucidrains/local-attention/blob/master/local_attention/local_attention.py#L41
