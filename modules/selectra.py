@@ -5,13 +5,21 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .utils import pad_to_multiple
+from .utils import pad_to_multiple, compute_mask_indices
 
 class Selectra(nn.Module):
-    def __init__(self, embed = 512, enc_emb = 768):
+    def __init__(self, 
+                 embed = 512, enc_emb = 768,
+                 mask_prob = 0.65, mask_length = 10):
+
         super().__init__()
         self.embed = embed
         self.enc_emb = enc_emb
+
+        self.mask_prob = mask_prob
+        self.mask_length = mask_length
+        self.mask_emb = nn.Parameter(
+            torch.FloatTensor(self.enc_emb).uniform_())
 
         feat_enc_layers = [(512, 10, 5)] + \
                 [(512, 3, 2)] * 4 + [(512,2,2)] + [(512,2,2)]
@@ -29,72 +37,27 @@ class Selectra(nn.Module):
         x,
         padding_mask,
         mask_indices=None,
-        mask_channel_indices=None,
     ):
         B, T, C = x.shape
-
-        if self.mask_channel_prob > 0 and self.mask_channel_before:
-            mask_channel_indices = compute_mask_indices(
-                (B, C),
-                None,
-                self.mask_channel_prob,
-                self.mask_channel_length,
-                self.mask_channel_selection,
-                self.mask_channel_other,
-                no_overlap=self.no_mask_channel_overlap,
-                min_space=self.mask_channel_min_space,
-            )
-            mask_channel_indices = (
-                torch.from_numpy(mask_channel_indices)
-                .to(x.device)
-                .unsqueeze(1)
-                .expand(-1, T, -1)
-            )
-            x[mask_channel_indices] = 0
 
         if self.mask_prob > 0:
             if mask_indices is None:
                 mask_indices = compute_mask_indices(
-                    (B, T),
-                    padding_mask,
-                    self.mask_prob,
-                    self.mask_length,
-                    self.mask_selection,
-                    self.mask_other,
-                    min_masks=2,
-                    no_overlap=self.no_mask_overlap,
-                    min_space=self.mask_min_space,
-                    require_same_masks=self.cfg.require_same_masks,
-                    mask_dropout=self.cfg.mask_dropout,
+                    (B, T), padding_mask,
+                    self.mask_prob, self.mask_length,
+                    'static', 0.,
+                    min_masks=2, no_overlap=False, min_space=1,
+                    require_same_masks=True, mask_dropout=0.
                 )
                 mask_indices = torch.from_numpy(mask_indices).to(x.device)
-            x = index_put(x, mask_indices, self.mask_emb)
+            x[mask_indices] = self.mask_emb
+
         else:
             mask_indices = None
 
-        if self.mask_channel_prob > 0 and not self.mask_channel_before:
-            if mask_channel_indices is None:
-                mask_channel_indices = compute_mask_indices(
-                    (B, C),
-                    None,
-                    self.mask_channel_prob,
-                    self.mask_channel_length,
-                    self.mask_channel_selection,
-                    self.mask_channel_other,
-                    no_overlap=self.no_mask_channel_overlap,
-                    min_space=self.mask_channel_min_space,
-                )
-                mask_channel_indices = (
-                    torch.from_numpy(mask_channel_indices)
-                    .to(x.device)
-                    .unsqueeze(1)
-                    .expand(-1, T, -1)
-                )
-            x = index_put(x, mask_channel_indices, 0)
-
         return x, mask_indices
 
-    def forward(self, source, mask = False):
+    def forward(self, source, padding_mask = None, mask = False):
         features = self.feat_enc(source)
 
         features = features.transpose(1, 2)
@@ -102,10 +65,7 @@ class Selectra(nn.Module):
         features = self.post_extract_proj(features)
 
         if mask:
-            x, mask_indices = self.apply_mask(
-                features,
-                None
-            )
+            x, mask_indices = self.apply_mask(features, padding_mask)
 
         x, layer_results = self.encoder(features)
 
