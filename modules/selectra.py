@@ -10,11 +10,11 @@ from .augments import add_gauss
 
 class Selectra(nn.Module):
     def __init__(self, 
-                 embed = 512, enc_emb = 768, encoder_layers = 12,
+                 emb = 512, enc_emb = 768, enc_layers = 12,
                  mask_prob = 0.65, mask_length = 10):
 
         super().__init__()
-        self.embed = embed
+        self.emb = emb
         self.enc_emb = enc_emb
 
         self.mask_prob = mask_prob
@@ -27,15 +27,11 @@ class Selectra(nn.Module):
         self.feat_enc = FeatureEncoder(self.enc_emb,
             conv_layers=feat_enc_layers, dropout=0.0, conv_bias=False)
 
-        self.encoder = TransformerEncoder(encoder_layers)
+        self.generator = TransformerEncoder(enc_layers, self.enc_emb)
+        self.discriminator = TransformerEncoder(enc_layers, self.enc_emb // 4)
 
     def forward(self, x, padding_mask = None, mask = False):
-        # TODO add more variety
-        corr_x = add_gauss(x)
-
         x = self.feat_enc(x)
-        with torch.no_grad():
-            corr_x = self.feat_enc(corr_x)
 
         if mask:
             B, T, C = x.shape
@@ -47,11 +43,9 @@ class Selectra(nn.Module):
                 require_same_masks=True, mask_dropout=0.
             )
             mask_indices = torch.from_numpy(mask_indices).to(x.device)
+            x[mask_indices] = self.mask_emb 
 
-            x_merged = x
-            x_merged[mask_indices] = corr_x[mask_indices] 
-
-        x, layer_results = self.encoder(x_merged)
+        x = self.generator(x)
 
         return x
 
@@ -106,18 +100,18 @@ def make_conv_pos(e, k, g):
     return pos_conv
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, encoder_layers = 12, dropout: float = 0.1):
+    def __init__(self, enc_layers = 12, emb = 768, dropout: float = 0.1):
         super().__init__()
 
-        self.embed_dim = 768
-        self.encoder_layers = encoder_layers
+        self.emb = emb
+        self.enc_layers = enc_layers
 
-        self.pos_conv = make_conv_pos(self.embed_dim, 128, 16)
+        self.pos_conv = make_conv_pos(self.emb, 128, 16)
 
         self.layers = nn.ModuleList(
-            [TransformerEncoderLayer() for _ in range(self.encoder_layers)]
+            [TransformerEncoderLayer() for _ in range(self.enc_layers)]
         )
-        self.layer_norm = nn.LayerNorm(self.embed_dim)
+        self.layer_norm = nn.LayerNorm(self.emb)
         self.layerdrop = 0.05
 
         #self.apply(init_bert_params)
@@ -148,7 +142,6 @@ class TransformerEncoder(nn.Module):
         x = F.dropout(x, p=0.1, training=self.training)
         x = x.transpose(0, 1)
 
-        layer_results = []
         r = None
 
         for i, layer in enumerate(self.layers):
@@ -157,8 +150,6 @@ class TransformerEncoder(nn.Module):
                 x, (z, lr) = layer(
                     x, self_attn_padding_mask=padding_mask, need_weights=False
                 )
-                if i >= 0:
-                    layer_results.append((x, z, lr))
             if i == tgt_layer:
                 r = x
                 break
@@ -167,7 +158,7 @@ class TransformerEncoder(nn.Module):
             x = r
 
         x = x.transpose(0, 1)
-        return x, layer_results
+        return x
 
 def init_bert_params(module):
     """
@@ -202,26 +193,23 @@ def init_bert_params(module):
         normal_(module.v_proj.weight.data)
 
 class TransformerEncoderLayer(nn.Module):
-    def __init__(
-        self,
-        embedding_dim: float = 768,
-        ffn_embedding_dim: float = 3072,
-        num_attention_heads: int = 8,
-        dropout: float = 0.1,
-        attention_dropout: float = 0.1,
-        activation_dropout: float = 0.1,
-    ) -> None:
+    def __init__(self,
+                 emb: float = 768, ffn_emb: float = 3072,
+                 num_heads: int = 8,
+                 dropout: float = 0.1,
+                 attention_dropout: float = 0.1,
+                 activation_dropout: float = 0.1) -> None:
 
         super().__init__()
         # Initialize parameters
-        self.embed_dim = embedding_dim
+        self.emb = emb
         self.dropout = dropout
         self.activation_dropout = activation_dropout
 
         # Initialize blocks
         self.self_attn = nn.MultiheadAttention(
-            self.embed_dim,
-            num_attention_heads,
+            self.emb,
+            num_heads,
             dropout=attention_dropout,
             #self_attention=True,
         )
@@ -231,12 +219,12 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout3 = nn.Dropout(dropout)
 
         # layer norm associated with the self attention layer
-        self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
-        self.fc1 = nn.Linear(self.embed_dim, ffn_embedding_dim)
-        self.fc2 = nn.Linear(ffn_embedding_dim, self.embed_dim)
+        self.self_attn_layer_norm = nn.LayerNorm(self.emb)
+        self.fc1 = nn.Linear(self.emb, ffn_emb)
+        self.fc2 = nn.Linear(ffn_emb, self.emb)
 
         # layer norm associated with the position wise feed-forward NN
-        self.final_layer_norm = nn.LayerNorm(self.embed_dim)
+        self.final_layer_norm = nn.LayerNorm(self.emb)
 
     def forward(
         self,
