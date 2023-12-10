@@ -5,29 +5,19 @@ train:
   data_path: '/ssd/LibriSpeech/train-clean-100'
   training_files: '/home/miseul/cousework/it_hgkang/selectra/filelists/libri_train.txt'
   validation_files: '/home/miseul/cousework/it_hgkang/selectra/filelists/libri_val.txt'
-  batch_size: 64
+  batch_size: 16
 
 data:
   sampling_rate: 16000
 
 model:
   n_symbols: 27 # alphabet (26) + blank (1)
-  symbols_embedding_dim: 256
   hidden_dim: 512
-  enc_hidden_dim: 768
-  dprenet_dim: 256
-  postnet_dim: 256
-  ff_dim: 1024
-  n_heads: 4
-  n_layers: 6
-  n_postnet_layers: 5
 
 optimization:
-  lr: 384**-0.5
-  warmup_steps: 4000
+  lr: 0.00005
   grad_clip_thresh: 1.0
-  batch_size: 3
-  accumulation: 2
-  iters_per_validation: 2000
+  accumulation: 100
+  iters_per_validation: 10
   iters_per_checkpoint: 10000
   train_steps: 200000

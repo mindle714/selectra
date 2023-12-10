@@ -13,7 +13,7 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.hp = hp
         
-        cp_path = 'wav2vec_small.pt'
+        cp_path = '/ssd/wav2vec_small.pt'
         model, cfg, task = fairseq.checkpoint_utils.load_model_ensemble_and_task([cp_path])
         self.model = model[0]
         self.hidden_dim = self.hp['model']['hidden_dim']
