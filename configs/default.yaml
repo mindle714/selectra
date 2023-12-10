@@ -3,8 +3,8 @@ train:
   output_directory: 'training_log'
   output_name: 'base'
   data_path: '/ssd/LibriSpeech/train-clean-100'
-  training_files: '/home/miseul/cousework/it_hgkang/selectra/filelists/libri_train.txt'
-  validation_files: '/home/miseul/cousework/it_hgkang/selectra/filelists/libri_val.txt'
+  training_files: '/home/miseul/cousework/selectra/filelists/libri_train.txt'
+  validation_files: '/home/miseul/cousework/selectra/filelists/libri_val.txt'
   batch_size: 16
 
 data:
