@@ -6,7 +6,7 @@ from modules.model import Model
 import yaml
 from utils.data_utils import *
 from utils.writer import get_writer
-#from utils.build_and_load import *
+from utils.utils import *
 import tqdm
 
 def validate(model, criterion, val_loader, iteration, writer, device):
@@ -37,15 +37,17 @@ def main(args):
     with open(config_path) as fp:
         config = yaml.full_load(fp)
 
-    train_steps = config['optimization']['train_steps']
+    train_steps  = config['optimization']['train_steps']
     accumulation = config['optimization']['accumulation']
     iters_per_checkpoint = config['optimization']['iters_per_checkpoint']
-    grad_clip_thresh = config['optimization']['grad_clip_thresh']
+    grad_clip_thresh     = config['optimization']['grad_clip_thresh']
     lr = config['optimization']['lr']
     iters_per_validation = config['optimization']['iters_per_validation']
-    accumulation = config['optimization']['accumulation']
+    accumulation     = config['optimization']['accumulation']
+    output_directory = config['train']['output_directory']
+    output_name      = config['train']['output_name']
 
-    device    = torch.device(f'cuda:{str(args.gpu)}')
+    device   = torch.device(f'cuda:{str(args.gpu)}')
 
     trainset = AudioSet('train', config)
     collate_fn   = AudioSetCollate()
@@ -56,7 +58,7 @@ def main(args):
                             drop_last=True)
 
     valset = AudioSet('val', config)
-    collate_fn   = AudioSetCollate()
+    collate_fn = AudioSetCollate()
     val_loader = DataLoader(valset,
                             shuffle=True,
                             batch_size=1, 
@@ -70,7 +72,7 @@ def main(args):
 
     criterion = nn.CTCLoss(blank=0)
 
-    writer = get_writer(config['train']['output_directory'], config['train']['output_name'])
+    writer   = get_writer(output_directory, output_name)
 
     loss = 0
     iteration = 0
@@ -101,13 +103,13 @@ def main(args):
 
             if iteration%(iters_per_validation*accumulation)==0:
                 validate(model, criterion, val_loader, iteration, writer, device)
-                """
+                
                 save_checkpoint(model,
                                 optimizer,
                                 lr,
-                                iteration//accumulation,
-                                filepath=f'{output_directory}/{log_directory}')
-                """
+                                iteration,
+                                filepath=f'{output_directory}/{output_name}')
+                
             if iteration==(train_steps*accumulation):
                 break
 
