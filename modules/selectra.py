@@ -49,21 +49,26 @@ class Selectra(nn.Module):
         x_orig = x
         x = x.unsqueeze(1)
 
+        if not mask:
+            x_disc = self.feat_enc(self.pre_conv(x))
+            x_disc = self.discriminator(x_disc)
+
+            return x_disc
+
         with torch.no_grad():
             x_q = self.codec(x, mode='quantize')
         x = self.feat_enc(self.pre_conv(x))
 
-        if mask:
-            B, T, C = x.shape
-            mask_indices = compute_mask_indices(
-                (B, T), padding_mask,
-                self.mask_prob, self.mask_length,
-                'static', 0.,
-                min_masks=2, no_overlap=False, min_space=1,
-                require_same_masks=True, mask_dropout=0.
-            )
-            mask_indices = torch.from_numpy(mask_indices).to(x.device)
-            x[mask_indices] = self.mask_emb 
+        B, T, C = x.shape
+        mask_indices = compute_mask_indices(
+            (B, T), padding_mask,
+            self.mask_prob, self.mask_length,
+            'static', 0.,
+            min_masks=2, no_overlap=False, min_space=1,
+            require_same_masks=True, mask_dropout=0.
+        )
+        mask_indices = torch.from_numpy(mask_indices).to(x.device)
+        x[mask_indices] = self.mask_emb 
 
         x = self.generator(x)
         # TODO temporary fix;
@@ -91,7 +96,7 @@ class Selectra(nn.Module):
 
         mlm_loss = F.cross_entropy(x_projs, x_q, reduction='none')
         mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
-        mlm_loss /= x.shape[0]
+        mlm_loss /= B
 
         with torch.no_grad():
             x_gen = torch.zeros_like(x_q)
@@ -111,7 +116,7 @@ class Selectra(nn.Module):
             x_disc = x_disc[:, :mask_indices.shape[1], :]
 
         disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
-        disc_loss /= x.shape[0]
+        disc_loss /= B
 
         return mlm_loss, disc_loss
 
