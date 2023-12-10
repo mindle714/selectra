@@ -6,5 +6,5 @@ SELECTRA : Speech ELECTRA
 
 ```
 pip3 install -r requirements.txt
-python3 train.py
+python3 train.py --gpu {gpu index} --c {path of config file}
 ```
