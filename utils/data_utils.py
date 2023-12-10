@@ -11,7 +11,6 @@ import yaml
 import random
 from text import text_to_sequence
 import soundfile as sf
-import fairseq
 
 def load_filepaths(path_ema):
     with open(path_ema, 'r') as f:

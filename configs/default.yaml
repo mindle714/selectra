@@ -13,6 +13,7 @@ data:
 model:
   n_symbols: 27 # alphabet (26) + blank (1)
   hidden_dim: 512
+  enc_hidden_dim: 768
 
 optimization:
   lr: 0.00005

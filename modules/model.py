@@ -6,34 +6,31 @@ from .init_layer import *
 from .transformer import *
 from utils.utils import get_mask_from_lengths
 import random
-import fairseq
+from .selectra import Selectra
 
 class Model(nn.Module):
     def __init__(self, hp):
         super(Model, self).__init__()
         self.hp = hp
         
-        cp_path = '/ssd/wav2vec_small.pt'
-        model, cfg, task = fairseq.checkpoint_utils.load_model_ensemble_and_task([cp_path])
-        self.model = model[0]
         self.hidden_dim = self.hp['model']['hidden_dim']
+        self.enc_hidden_dim = self.hp['model']['enc_hidden_dim']
+        self.model = Selectra(self.hidden_dim, self.enc_hidden_dim)
+
         self.nclass = self.hp['model']['n_symbols']
-        self.fc     = nn.Linear(512, self.nclass)
+        self.fc     = nn.Linear(self.enc_hidden_dim, self.nclass)
         
     def outputs(self, wav_padded):
-
-        self.model.eval()
-        with torch.no_grad():
-            wav = self.model.feature_extractor(wav_padded)
-        logits = self.fc(wav.transpose(1,2))
+        feat = self.model(wav_padded, mask = True)
+        logits = self.fc(feat)
         
         return logits
     
     def forward(self, wav_padded, wav_lengths, text_padded, text_lengths, criterion):
-
-        outputs     = self.outputs(wav_padded).transpose(0,1).log_softmax(2)
+        outputs     = self.outputs(wav_padded)
         wav_lengths = wav_lengths // 320
-        ctc_loss    = criterion(outputs, text_padded, wav_lengths, text_lengths)
+        ctc_loss    = criterion(outputs.transpose(1,0), 
+                text_padded, wav_lengths, text_lengths)
 
         return ctc_loss, outputs
         
