@@ -11,6 +11,7 @@ import yaml
 import random
 from text import text_to_sequence
 import soundfile as sf
+import fairseq
 
 def load_filepaths(path_ema):
     with open(path_ema, 'r') as f:
@@ -37,12 +38,16 @@ class AudioSet(torch.utils.data.Dataset):
 
         path_wav, script = path_data.split('|')
         path_wav = os.path.join(self.data_path, path_wav)
+
         wav, _ = sf.read(path_wav)
+        wav = wav[:((len(wav)//320) -1)* 320 + 80]
+        #print(wav.shape[0] / 320, wav.shape[0])
 
         script_id = text_to_sequence(script, ['custom_english_cleaners'])
         #print(wav.shape, len(script_id))
         wav = torch.FloatTensor(wav)
         script_id = torch.LongTensor(script_id)
+
         return wav, script_id, script
 
     def __getitem__(self, index):
@@ -80,7 +85,6 @@ class AudioSetCollate():
             txt = batch[ids_sorted_decreasing[i]][1] 
             txt_padded[i, :txt.shape[0]] = txt
             txt_lengths[i] = txt.shape[0]
-            #print(max(txt))
 
         return wav_padded, wav_lengths, txt_padded, txt_lengths
 
