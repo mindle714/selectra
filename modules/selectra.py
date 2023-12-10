@@ -5,8 +5,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .utils import pad_to_multiple, compute_mask_indices
-from .augments import add_gauss
+from .soundstream import _infer_device, load_codec, CausalConv1d
 
 class Selectra(nn.Module):
     def __init__(self, 
@@ -22,16 +23,30 @@ class Selectra(nn.Module):
         self.mask_emb = nn.Parameter(
             torch.FloatTensor(self.enc_emb).uniform_())
 
-        feat_enc_layers = [(512, 10, 5)] + \
-                [(512, 3, 2)] * 4 + [(512,2,2)] + [(512,2,2)]
-        self.feat_enc = FeatureEncoder(self.enc_emb,
+        self.pre_conv = CausalConv1d(1, 512, 7)
+        #feat_enc_layers = [(512, 10, 5)] + \
+        #        [(512, 3, 2)] * 4 + [(512,2,2)] + [(512,2,2)]
+        #feat_enc_layers = [(512, 10, 5)] * 2 + [(512, 8, 4), (512, 4, 2)]
+        feat_enc_layers = [(512, 4, 2), (512, 8, 4)] + [(512, 10, 5)] * 2
+        self.feat_enc = FeatureEncoder(512, self.enc_emb,
             conv_layers=feat_enc_layers, dropout=0.0, conv_bias=False)
 
+        self.codec = load_codec()
+        self.num_quant, self.quant_emb, _ = self.codec.quantizer.codebooks.shape
+
         self.generator = TransformerEncoder(enc_layers, self.enc_emb)
+        dev = _infer_device()
+        self.gen_projs = [nn.Linear(self.enc_emb, self.quant_emb, device=dev) \
+            for _ in range(self.num_quant)]
+
         self.discriminator = TransformerEncoder(enc_layers, self.enc_emb // 4)
 
     def forward(self, x, padding_mask = None, mask = False):
-        x = self.feat_enc(x)
+        x = x.unsqueeze(1)
+
+        with torch.no_grad():
+            x_q = self.codec(x, mode='quantize')
+        x = self.feat_enc(self.pre_conv(x))
 
         if mask:
             B, T, C = x.shape
@@ -46,11 +61,35 @@ class Selectra(nn.Module):
             x[mask_indices] = self.mask_emb 
 
         x = self.generator(x)
+        # TODO temporary fix;
+        if x.shape[1] > mask_indices.shape[1]:
+            x = x[:, :mask_indices.shape[1], :]
 
-        return x
+        x_projs = []
+        x_indices = []
+
+        for i in range(len(self.gen_projs)):
+            x_proj = self.gen_projs[i](x)
+            x_projs.append(x_proj.transpose(2, 1))
+
+            uniform_ns = torch.rand(x_proj.shape)
+            gumbel_ns = -torch.log(-torch.log(uniform_ns + 1e-9) + 1e-9)
+            logits = F.softmax(x_proj + gumbel_ns.to(x.device), -1)
+            indices = torch.argmax(logits, -1)
+            x_indices.append(indices)
+
+        x_projs = torch.stack(x_projs, -1)
+        x_indices = torch.stack(x_indices, -1)
+        # TODO temporary fix; need to add padding scheme same as soundstream
+        if x_q.shape[1] > x_indices.shape[1]:
+            x_q = x_q[:,:x_indices.shape[1],:]
+
+        cent_loss = F.cross_entropy(x_projs, x_q, reduction='none')
+        cent_loss = (mask_indices.unsqueeze(-1) * cent_loss).sum()
+        return cent_loss
 
 class FeatureEncoder(nn.Module):
-    def __init__(self, out_d,
+    def __init__(self, in_d, out_d,
                  conv_layers: List[Tuple[int, int, int]],
                  dropout: float = 0.0,
                  conv_bias: bool = False):
@@ -58,7 +97,6 @@ class FeatureEncoder(nn.Module):
         super().__init__()
         self.conv_layers = nn.ModuleList()
 
-        in_d = 1
         for i, cl in enumerate(conv_layers):
             (dim, k, stride) = cl
             
@@ -73,8 +111,6 @@ class FeatureEncoder(nn.Module):
         self.post_proj = nn.Linear(in_d, out_d)
 
     def forward(self, x):
-        x = x.unsqueeze(1)
-
         for conv in self.conv_layers:
             x = conv(x)
         

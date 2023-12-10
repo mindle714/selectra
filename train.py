@@ -20,7 +20,7 @@ def validate(model, criterion, val_loader, iteration, writer, device):
             wav_padded, wav_lengths, txt_padded, txt_lengths = [
                 x.to(device) for x in batch
             ]
-            ctc_loss, _ = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
+            ctc_loss = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
             val_loss += ctc_loss.item() * len(batch[0])
 
         val_loss /= n_data
@@ -87,7 +87,7 @@ def main(args):
                 x.to(device) for x in batch
             ]
 
-            ctc_loss, outputs = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
+            ctc_loss = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
 
             sub_loss = (ctc_loss)/accumulation
             sub_loss.backward()

@@ -59,7 +59,7 @@ class SoundStream(nn.Module):
     def forward(
             self,
             x,
-            mode: Literal['end-to-end', 'encode', 'decode'] = 'end-to-end',
+            mode: Literal['end-to-end', 'encode', 'decode', 'quantize'] = 'end-to-end',
         ):
         # x: batch_size x 1 x (T / 1)
         # e: batch_size x (T / M) x D --- where M is product of all numbers in `strides` tuple
@@ -79,6 +79,11 @@ class SoundStream(nn.Module):
         if mode == 'decode':
             o = self.decoder(x.permute((0,2,1)))
             return o
+
+        if mode == 'quantize':
+            e = self.encoder(x)
+            _, indices, _ = self.quantizer(e.permute((0,2,1)))
+            return indices
 
 class EncoderBlock(nn.Module):
     def __init__(self, out_channels, stride):
