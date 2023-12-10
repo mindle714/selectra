@@ -36,13 +36,13 @@ class Selectra(nn.Module):
         self.num_quant, self.quant_emb, _ = self.codec.quantizer.codebooks.shape
 
         self.generator = TransformerEncoder(
-            enc_layers, self.enc_emb, self.enc_emb)
+            enc_layers, self.enc_emb, self.enc_emb // 4, 3072 // 4)
         dev = _infer_device()
-        self.gen_projs = [nn.Linear(self.enc_emb, self.quant_emb, device=dev) \
+        self.gen_projs = [nn.Linear(self.enc_emb // 4, self.quant_emb, device=dev) \
             for _ in range(self.num_quant)]
 
         self.discriminator = TransformerEncoder(
-            enc_layers, self.enc_emb, self.enc_emb)
+            enc_layers, self.enc_emb, self.enc_emb, 3072)
         self.disc_proj = nn.Linear(self.enc_emb, 2)
 
     def forward(self, x, padding_mask = None, mask = False):
@@ -164,20 +164,25 @@ def make_conv_pos(e, k, g):
 
 class TransformerEncoder(nn.Module):
     def __init__(self, enc_layers = 12, 
-                 in_emb = 768, emb = 768,
+                 in_emb = 768, emb = 768, fft_emb = 3072, 
                  dropout: float = 0.1):
 
         super().__init__()
 
+        self.in_emb = in_emb
         self.emb = emb
         self.enc_layers = enc_layers
 
-        self.pos_conv = make_conv_pos(self.emb, 128, 16)
+        self.pos_conv = make_conv_pos(self.in_emb, 128, 16)
+
+        self.emb_conv = None
+        if self.in_emb != self.emb:
+            self.emb_conv = nn.Linear(self.in_emb, self.emb)
 
         self.layers = nn.ModuleList(
-            [TransformerEncoderLayer() for _ in range(self.enc_layers)]
+            [TransformerEncLayer(self.emb, fft_emb) for _ in range(self.enc_layers)]
         )
-        self.layer_norm = nn.LayerNorm(self.emb)
+        self.layer_norm = nn.LayerNorm(self.in_emb)
         self.layerdrop = 0.05
 
         #self.apply(init_bert_params)
@@ -194,6 +199,9 @@ class TransformerEncoder(nn.Module):
         x = x + x_conv
         
         x = self.layer_norm(x)
+
+        if self.emb_conv is not None:
+            x = self.emb_conv(x)
 
         x, pad_length = pad_to_multiple(x, 2, dim=-2, value=0)
 
@@ -258,7 +266,7 @@ def init_bert_params(module):
         normal_(module.k_proj.weight.data)
         normal_(module.v_proj.weight.data)
 
-class TransformerEncoderLayer(nn.Module):
+class TransformerEncLayer(nn.Module):
     def __init__(self,
                  emb: float = 768, ffn_emb: float = 3072,
                  num_heads: int = 8,
