@@ -71,11 +71,14 @@ def main(args):
                                  weight_decay=0.9)
 
     criterion = nn.CTCLoss(blank=0)
-
     writer   = get_writer(output_directory, output_name)
-
     loss = 0
     iteration = 0
+    ### Load pre-trained model ###
+    if args.iteration != None:
+        load_checkpoint(model, optimizer, args.iteration, f'{output_directory}/{output_name}')
+        iteration += args.iteration
+
     model.train()
     print("|-Train-| Training Start!!!")
     while iteration < (train_steps * accumulation):
@@ -108,7 +111,7 @@ def main(args):
                                 optimizer,
                                 lr,
                                 iteration,
-                                filepath=f'{output_directory}/{output_name}')
+                                filepath=f'{output_directory}/{output_name}') # save file
                 
             if iteration==(train_steps*accumulation):
                 break
@@ -117,6 +120,8 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('--gpu', type=str, default='0')
     p.add_argument('--c', type=str, default='configs/default.yaml')
+    p.add_argument('--iteration', type=int, default=None)
+
     args = p.parse_args()
     
     config_path = args.c

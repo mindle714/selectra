@@ -11,11 +11,21 @@ def load_yaml(path):
     return out
 
 def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
-    print(f"Saving model and optimizer state at iteration {iteration} to {filepath}")
+
     torch.save({'iteration': iteration,
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'learning_rate': learning_rate}, f'{filepath}/checkpoint_{iteration}')
+    print(f"Saving model and optimizer state at iteration {iteration} to {filepath}")
+
+def load_checkpoint(model, optimizer, iteration, filepath):
+
+    checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}')
+    model.load_state_dict(checkpoint['state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    iteration = checkpoint['iteration']
+
+    print(f"Load model and optimizer state at iteration {iteration} of {filepath}")
 
 def get_mask_from_lengths(lengths):
     #import pdb
