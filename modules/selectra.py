@@ -11,8 +11,9 @@ from .soundstream import _infer_device, load_codec, CausalConv1d
 
 class Selectra(nn.Module):
     def __init__(self, 
-                 emb = 512, enc_emb = 768, enc_layers = 12,
-                 mask_prob = 0.65, mask_length = 10):
+                 emb = 512, enc_emb = 768, enc_layers = 6, #12,
+                 #mask_prob = 0.65, mask_length = 10):
+                 mask_prob = 0.2, mask_length = 10):
 
         super().__init__()
         self.emb = emb
@@ -23,25 +24,29 @@ class Selectra(nn.Module):
         self.mask_emb = nn.Parameter(
             torch.FloatTensor(self.enc_emb).uniform_())
 
-        self.pre_conv = CausalConv1d(1, 512, 7)
+        self.pre_conv = CausalConv1d(1, 32, 7)
         #feat_enc_layers = [(512, 10, 5)] + \
         #        [(512, 3, 2)] * 4 + [(512,2,2)] + [(512,2,2)]
         #feat_enc_layers = [(512, 10, 5)] * 2 + [(512, 8, 4), (512, 4, 2)]
-        feat_enc_layers = [(512, 4, 2), (512, 8, 4)] + [(512, 10, 5)] * 2
-        self.feat_enc = FeatureEncoder(512, self.enc_emb,
+        feat_enc_layers = [(64, 4, 2), (128, 8, 4)] + [(256, 10, 5)] * 2
+        self.feat_enc = FeatureEncoder(32, self.enc_emb,
             conv_layers=feat_enc_layers, dropout=0.0, conv_bias=False)
 
         self.codec = load_codec()
         self.num_quant, self.quant_emb, _ = self.codec.quantizer.codebooks.shape
 
-        self.generator = TransformerEncoder(enc_layers, self.enc_emb)
+        self.generator = TransformerEncoder(
+            enc_layers, self.enc_emb, self.enc_emb)
         dev = _infer_device()
         self.gen_projs = [nn.Linear(self.enc_emb, self.quant_emb, device=dev) \
             for _ in range(self.num_quant)]
 
-        self.discriminator = TransformerEncoder(enc_layers, self.enc_emb // 4)
+        self.discriminator = TransformerEncoder(
+            enc_layers, self.enc_emb, self.enc_emb)
+        self.disc_proj = nn.Linear(self.enc_emb, 2)
 
     def forward(self, x, padding_mask = None, mask = False):
+        x_orig = x
         x = x.unsqueeze(1)
 
         with torch.no_grad():
@@ -84,9 +89,31 @@ class Selectra(nn.Module):
         if x_q.shape[1] > x_indices.shape[1]:
             x_q = x_q[:,:x_indices.shape[1],:]
 
-        cent_loss = F.cross_entropy(x_projs, x_q, reduction='none')
-        cent_loss = (mask_indices.unsqueeze(-1) * cent_loss).sum()
-        return cent_loss
+        mlm_loss = F.cross_entropy(x_projs, x_q, reduction='none')
+        mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
+        mlm_loss /= x.shape[0]
+
+        with torch.no_grad():
+            x_gen = torch.zeros_like(x_q)
+            x_gen[~mask_indices] += x_q[~mask_indices]
+            x_gen[mask_indices] += x_indices[mask_indices]
+
+            x_gen = self.codec.quantizer.get_output_from_indices(x_gen)
+            x_gen = self.codec(x_gen, mode='decode')
+            x_gen_pad = max(x_orig.shape[-1] - x_gen.shape[-1], 0)
+            x_gen = F.pad(x_gen, (0, x_gen_pad))
+
+        x_disc = self.feat_enc(self.pre_conv(x_gen))
+        x_disc = self.discriminator(x_disc)
+        x_disc = self.disc_proj(x_disc)
+        # TODO temporary fix;
+        if x_disc.shape[1] > mask_indices.shape[1]:
+            x_disc = x_disc[:, :mask_indices.shape[1], :]
+
+        disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
+        disc_loss /= x.shape[0]
+
+        return mlm_loss, disc_loss
 
 class FeatureEncoder(nn.Module):
     def __init__(self, in_d, out_d,
@@ -136,7 +163,10 @@ def make_conv_pos(e, k, g):
     return pos_conv
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, enc_layers = 12, emb = 768, dropout: float = 0.1):
+    def __init__(self, enc_layers = 12, 
+                 in_emb = 768, emb = 768,
+                 dropout: float = 0.1):
+
         super().__init__()
 
         self.emb = emb

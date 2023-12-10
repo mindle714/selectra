@@ -14,6 +14,9 @@ torchaudio.save('x_test2.wav', recovered[0], 16000)
 
 e = audio_codec.encoder(waveform)
 res = audio_codec.quantizer(e.permute((0,2,1)))
+assert torch.all(torch.tensor(res[0].shape) == torch.tensor([1, 1271, 256]))
+assert torch.all(torch.tensor(res[1].shape) == torch.tensor([1, 1271, 16]))
+
 q2 = audio_codec.quantizer.get_output_from_indices(res[1])
 recovered2 = audio_codec(quantized, mode='decode')
 assert torch.all(recovered == recovered2)

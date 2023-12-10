@@ -15,6 +15,5 @@ class Model(nn.Module):
         self.fc     = nn.Linear(self.enc_hidden_dim, self.nclass)
         
     def forward(self, wav_padded, wav_lengths, text_padded, text_lengths, criterion):
-        ctc_loss = self.model(wav_padded, mask = True)
-        return ctc_loss
+        return self.model(wav_padded, mask = True)
         
