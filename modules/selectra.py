@@ -71,9 +71,6 @@ class Selectra(nn.Module):
         x[mask_indices] = self.mask_emb 
 
         x = self.generator(x)
-        # TODO temporary fix;
-        if x.shape[1] > mask_indices.shape[1]:
-            x = x[:, :mask_indices.shape[1], :]
 
         x_projs = []
         x_indices = []
@@ -111,9 +108,6 @@ class Selectra(nn.Module):
         x_disc = self.feat_enc(self.pre_conv(x_gen))
         x_disc = self.discriminator(x_disc)
         x_disc = self.disc_proj(x_disc)
-        # TODO temporary fix;
-        if x_disc.shape[1] > mask_indices.shape[1]:
-            x_disc = x_disc[:, :mask_indices.shape[1], :]
 
         disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
         disc_loss /= B
@@ -153,9 +147,9 @@ class FeatureEncoder(nn.Module):
         return x
 
 def make_conv_pos(e, k, g):
+    pad = nn.ConstantPad1d(((k//2)-1, k//2), 0)
     pos_conv = nn.Conv1d(
-        e, e, kernel_size=k,
-        padding=k // 2, groups=g)
+        e, e, kernel_size=k, groups=g)
 
     dropout = 0
     std = math.sqrt((4 * (1.0 - dropout)) / (k * e))
@@ -163,7 +157,7 @@ def make_conv_pos(e, k, g):
     nn.init.constant_(pos_conv.bias, 0)
 
     pos_conv = nn.utils.weight_norm(pos_conv, name="weight", dim=2)
-    pos_conv = nn.Sequential(pos_conv, nn.GELU())
+    pos_conv = nn.Sequential(pad, pos_conv, nn.GELU())
 
     return pos_conv
 
@@ -192,14 +186,12 @@ class TransformerEncoder(nn.Module):
 
         #self.apply(init_bert_params)
 
-    def forward(self, x, padding_mask=None, tgt_layer=None):
+    def forward(self, x, padding_mask=None):
         if padding_mask is not None:
-            x = x[padding_mask] = 0
+            x[padding_mask] = 0
 
         x_conv = self.pos_conv(x.transpose(1, 2))
         x_conv = x_conv.transpose(1, 2)
-        if x_conv.shape[1] > x.shape[1]:
-            x_conv = x_conv[:, :x.shape[1], :]
 
         x = x + x_conv
         
@@ -208,20 +200,8 @@ class TransformerEncoder(nn.Module):
         if self.emb_conv is not None:
             x = self.emb_conv(x)
 
-        x, pad_length = pad_to_multiple(x, 2, dim=-2, value=0)
-
-        if pad_length > 0 and padding_mask is None:
-            padding_mask = x.new_zeros((x.size(0), x.size(1)), dtype=torch.bool)
-            padding_mask[:, -pad_length:] = True
-        else:
-            padding_mask, _ = pad_to_multiple(
-                padding_mask, 2, dim=-1, value=True
-            )
-
         x = F.dropout(x, p=0.1, training=self.training)
         x = x.transpose(0, 1)
-
-        r = None
 
         for i, layer in enumerate(self.layers):
             dropout_prob = np.random.random() if self.layerdrop > 0 else 1
@@ -229,12 +209,6 @@ class TransformerEncoder(nn.Module):
                 x, (z, lr) = layer(
                     x, self_attn_padding_mask=padding_mask, need_weights=False
                 )
-            if i == tgt_layer:
-                r = x
-                break
-
-        if r is not None:
-            x = r
 
         x = x.transpose(0, 1)
         return x
