@@ -5,7 +5,7 @@ train:
   data_path: '/ssd/LibriSpeech/train-clean-100'
   training_files: '/home/miseul/cousework/selectra/filelists/libri_train.txt'
   validation_files: '/home/miseul/cousework/selectra/filelists/libri_val.txt'
-  batch_size: 16
+  batch_size: 4
 
 data:
   sampling_rate: 16000
