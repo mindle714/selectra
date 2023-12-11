@@ -3,13 +3,13 @@ import torch.nn as nn
 from .selectra import Selectra
 
 class Model(nn.Module):
-    def __init__(self, hp):
+    def __init__(self, hp, device):
         super(Model, self).__init__()
         self.hp = hp
-        
+        self.device = device
         self.hidden_dim = self.hp['model']['hidden_dim']
         self.enc_hidden_dim = self.hp['model']['enc_hidden_dim']
-        self.model = Selectra(self.hidden_dim, self.enc_hidden_dim)
+        self.model = Selectra(self.hidden_dim, self.enc_hidden_dim, dev = self.device)
 
         self.nclass = self.hp['model']['n_symbols']
         self.fc     = nn.Linear(self.enc_hidden_dim, self.nclass)

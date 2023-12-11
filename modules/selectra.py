@@ -14,7 +14,7 @@ class Selectra(nn.Module):
     def __init__(self, 
                  emb = 512, enc_emb = 768, enc_layers = 6, #12,
                  #mask_prob = 0.65, mask_length = 10):
-                 mask_prob = 0.2, mask_length = 10):
+                 mask_prob = 0.2, mask_length = 10, dev = 'cuda:0'):
 
         super().__init__()
         self.emb = emb
