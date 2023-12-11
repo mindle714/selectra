@@ -13,7 +13,7 @@ class Selectra(nn.Module):
     def __init__(self, 
                  emb = 512, enc_emb = 768, enc_layers = 6, #12,
                  #mask_prob = 0.65, mask_length = 10):
-                 mask_prob = 0.2, mask_length = 10):
+                 mask_prob = 0.2, mask_length = 10, dev = 'cuda:0'):
 
         super().__init__()
         self.emb = emb
@@ -37,7 +37,8 @@ class Selectra(nn.Module):
 
         self.generator = TransformerEncoder(
             enc_layers, self.enc_emb, self.enc_emb // 4, 3072 // 4)
-        dev = _infer_device()
+        #dev = _infer_device()
+
         self.gen_projs = [nn.Linear(self.enc_emb // 4, self.quant_emb, device=dev) \
             for _ in range(self.num_quant)]
 
