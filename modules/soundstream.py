@@ -35,6 +35,9 @@ def load_codec():
     )
     model_naturalspeech2.eval()
 
+    for p in model_naturalspeech2.parameters():
+        p.requires_grad_(False)
+
     return model_naturalspeech2
 
 class SoundStream(nn.Module):

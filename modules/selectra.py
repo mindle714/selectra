@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from .utils import pad_to_multiple, compute_mask_indices
 from .soundstream import _infer_device, load_codec, CausalConv1d
+from .multihead_attention import MultiheadAttention
 
 class Selectra(nn.Module):
     def __init__(self, 
@@ -38,7 +39,8 @@ class Selectra(nn.Module):
         self.generator = TransformerEncoder(
             enc_layers, self.enc_emb, self.enc_emb // 4, 3072 // 4)
         dev = _infer_device()
-        self.gen_projs = [nn.Linear(self.enc_emb // 4, self.quant_emb, device=dev) \
+        self.gen_projs = [nn.Linear(self.enc_emb // 4, \
+            self.quant_emb, bias = False, device=dev) \
             for _ in range(self.num_quant)]
 
         self.discriminator = TransformerEncoder(
@@ -55,8 +57,7 @@ class Selectra(nn.Module):
 
             return x_disc
 
-        with torch.no_grad():
-            x_q = self.codec(x, mode='quantize')
+        x_q = self.codec(x, mode='quantize')
         x = self.feat_enc(self.pre_conv(x))
 
         B, T, C = x.shape
@@ -91,26 +92,28 @@ class Selectra(nn.Module):
         if x_q.shape[1] > x_indices.shape[1]:
             x_q = x_q[:,:x_indices.shape[1],:]
 
-        mlm_loss = F.cross_entropy(x_projs, x_q, reduction='none')
-        mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
-        mlm_loss /= B
+        #mlm_loss = F.cross_entropy(x_projs, x_q, reduction='none')
+        mlm_loss = F.cross_entropy(x_projs[:,:,:,0], x_q[:,:,0], reduction='none')
+        #mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
+        #mlm_loss /= (B * T)
+        mlm_loss = (mask_indices * mlm_loss).sum()
+        mlm_loss /= (B * T)
 
-        with torch.no_grad():
-            x_gen = torch.zeros_like(x_q)
-            x_gen[~mask_indices] += x_q[~mask_indices]
-            x_gen[mask_indices] += x_indices[mask_indices]
+        x_gen = torch.zeros_like(x_q)
+        x_gen[~mask_indices] += x_q[~mask_indices]
+        x_gen[mask_indices] += x_indices[mask_indices]
 
-            x_gen = self.codec.quantizer.get_output_from_indices(x_gen)
-            x_gen = self.codec(x_gen, mode='decode')
-            x_gen_pad = max(x_orig.shape[-1] - x_gen.shape[-1], 0)
-            x_gen = F.pad(x_gen, (0, x_gen_pad))
+        # TODO disable updating
+        x_gen = self.codec.quantizer.get_output_from_indices(x_gen)
+        x_gen = self.codec(x_gen, mode='decode')
+        x_gen_pad = max(x_orig.shape[-1] - x_gen.shape[-1], 0)
+        x_gen = F.pad(x_gen, (0, x_gen_pad))
 
         x_disc = self.feat_enc(self.pre_conv(x_gen))
         x_disc = self.discriminator(x_disc)
         x_disc = self.disc_proj(x_disc)
 
         disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
-        disc_loss /= B
 
         return mlm_loss, disc_loss
 
@@ -184,7 +187,7 @@ class TransformerEncoder(nn.Module):
         self.layer_norm = nn.LayerNorm(self.in_emb)
         self.layerdrop = 0.05
 
-        #self.apply(init_bert_params)
+        self.apply(init_bert_params)
 
     def forward(self, x, padding_mask=None):
         if padding_mask is not None:
@@ -240,7 +243,7 @@ def init_bert_params(module):
         normal_(module.weight.data)
         if module.padding_idx is not None:
             module.weight.data[module.padding_idx].zero_()
-    if isinstance(module, nn.MultiheadAttention):
+    if isinstance(module, MultiheadAttention):
         normal_(module.q_proj.weight.data)
         normal_(module.k_proj.weight.data)
         normal_(module.v_proj.weight.data)
@@ -260,11 +263,11 @@ class TransformerEncLayer(nn.Module):
         self.activation_dropout = activation_dropout
 
         # Initialize blocks
-        self.self_attn = nn.MultiheadAttention(
+        self.self_attn = MultiheadAttention(
             self.emb,
             num_heads,
             dropout=attention_dropout,
-            #self_attention=True,
+            self_attention=True,
         )
 
         self.dropout1 = nn.Dropout(dropout)
@@ -294,6 +297,7 @@ class TransformerEncLayer(nn.Module):
             key=x,
             value=x,
             key_padding_mask=self_attn_padding_mask,
+            attn_mask=self_attn_mask,
             need_weights=False,
         )
 

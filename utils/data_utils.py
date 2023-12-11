@@ -57,8 +57,9 @@ class AudioSet(torch.utils.data.Dataset):
 
 
 class AudioSetCollate():
-    def __init__(self, eval=False):
+    def __init__(self, eval=False, normalize=True):
         self.eval = eval
+        self.normalize = normalize
         return
 
     def __call__(self, batch):
@@ -79,6 +80,10 @@ class AudioSetCollate():
         for i in range(len(ids_sorted_decreasing)):
 
             wav = batch[ids_sorted_decreasing[i]][0]
+            if self.normalize:
+                wav -= wav.mean()
+                wav /= wav.std()
+
             wav_padded[i, :wav.shape[0]] = wav
 
             txt = batch[ids_sorted_decreasing[i]][1] 
