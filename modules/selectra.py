@@ -55,6 +55,7 @@ class Selectra(nn.Module):
         x = x.unsqueeze(1)
 
         if not mask:
+
             x_disc = self.feat_enc(self.pre_conv(x))
             x_disc = self.discriminator(x_disc)
 
@@ -115,9 +116,9 @@ class Selectra(nn.Module):
         x_disc = self.discriminator(x_disc)
         x_disc = self.disc_proj(x_disc)
 
-        #disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
+        disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
 
-        return mlm_loss, mlm_loss#disc_loss
+        return mlm_loss, disc_loss
 
 class FeatureEncoder(nn.Module):
     def __init__(self, in_d, out_d,

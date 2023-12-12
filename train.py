@@ -16,6 +16,7 @@ def validate(model, criterion, val_loader, iteration, writer, device):
 
         n_data, val_loss = 0, 0
         for i, batch in enumerate(tqdm.tqdm(val_loader)):
+
             n_data += len(batch[0])
             wav_padded, wav_lengths, txt_padded, txt_lengths = [
                 x.to(device) for x in batch

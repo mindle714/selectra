@@ -6,6 +6,7 @@ train:
   training_files: '/home/miseul/cousework/selectra/filelists/libri_train.txt'
   validation_files: '/home/miseul/cousework/selectra/filelists/libri_val.txt'
   batch_size: 16
+  selectra_checkpoint: 100 
 
 data:
   sampling_rate: 16000
