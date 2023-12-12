@@ -10,35 +10,30 @@ from utils.utils import *
 import tqdm
 
 def validate(model, criterion, val_loader, iteration, writer, device):
-
+    
     model.eval()
     with torch.no_grad():
 
-        n_data, val_mlm_loss, val_disc_loss = 0, 0, 0
+        n_data, val_loss = 0, 0
         for i, batch in enumerate(tqdm.tqdm(val_loader)):
-            if i == 10:
-                break
 
             n_data += len(batch[0])
             wav_padded, wav_lengths, txt_padded, txt_lengths = [
                 x.to(device) for x in batch
             ]
-            mlm_loss, disc_loss = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
-            
-            val_mlm_loss  += mlm_loss.item() * len(batch[0])
-            val_disc_loss += disc_loss.item() * len(batch[0])
+            ctc_loss, _ = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
+            val_loss += ctc_loss.item() * len(batch[0])
 
-        val_mlm_loss /= n_data
-        val_disc_loss /= n_data
+        val_loss /= n_data
 
-        print(f'|-Validation-| Iteration:{iteration} mlm loss:{val_mlm_loss:.3f} disc loss:{val_disc_loss:.3f}')
+        print(f'|-Validation-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
 
-    writer.add_losses(val_mlm_loss, iteration, 'Validation', 'mlm_loss')
-    writer.add_losses(val_disc_loss, iteration, 'Validation', 'disc_loss')
+    writer.add_losses(ctc_loss.item(), iteration, 'Validation', 'ctc_loss')
     model.train()
     
     
 def main(args):
+
     config_path = args.c
     with open(config_path) as fp:
         config = yaml.full_load(fp)
@@ -49,9 +44,10 @@ def main(args):
     grad_clip_thresh     = config['optimization']['grad_clip_thresh']
     lr = config['optimization']['lr']
     iters_per_validation = config['optimization']['iters_per_validation']
-    accumulation     = config['optimization']['accumulation']
     output_directory = config['train']['output_directory']
-    output_name      = config['train']['output_name']
+    pretrained_name  = config['train']['output_name']
+    output_name      = f'{pretrained_name}_downstream'
+    selectra_checkpoint = config['train']['selectra_checkpoint']
 
     device   = torch.device(f'cuda:{str(args.gpu)}')
 
@@ -80,7 +76,11 @@ def main(args):
     writer   = get_writer(output_directory, output_name)
     loss = 0
     iteration = 0
+
     ### Load pre-trained model ###
+    #load_checkpoint(model, optimizer, selectra_checkpoint, f'{output_directory}/{pretrained_name}')
+
+    ### Load pre-trained downstream model ###
     if args.iteration != None:
         load_checkpoint(model, optimizer, args.iteration, f'{output_directory}/{output_name}')
         iteration += args.iteration
@@ -93,10 +93,9 @@ def main(args):
                 x.to(device) for x in batch
             ]
 
-            mlm_loss, disc_loss = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
-            tot_loss = mlm_loss + disc_loss
+            ctc_loss = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion, mask=False)
 
-            sub_loss = (tot_loss)/accumulation
+            sub_loss = (ctc_loss)/accumulation
             sub_loss.backward()
             loss = loss+sub_loss.item()
 
@@ -106,10 +105,9 @@ def main(args):
                 nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
                 optimizer.step()
                 optimizer.zero_grad()
-                    
-                writer.add_losses(mlm_loss.item(), iteration, 'Train', 'mlm_loss')
-                writer.add_losses(disc_loss.item(), iteration, 'Train', 'disc_loss')
-                print(f'|-Train-| Iteration:{iteration} mlm loss:{mlm_loss.item():.3f} disc loss:{disc_loss.item():.3f}')
+
+                writer.add_losses(ctc_loss.item(), iteration, 'Train', 'ctc_loss')
+                print(f'|-Train-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
                 loss=0
 
             if iteration%(iters_per_validation*accumulation)==0:
