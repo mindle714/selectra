@@ -102,11 +102,11 @@ def main(args):
 
             iteration += 1
 
-            nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
-            optimizer.step()
-            optimizer.zero_grad()
-
             if iteration%accumulation == 0:
+                nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+                optimizer.step()
+                optimizer.zero_grad()
+                    
                 writer.add_losses(mlm_loss.item(), iteration, 'Train', 'mlm_loss')
                 writer.add_losses(disc_loss.item(), iteration, 'Train', 'disc_loss')
                 print(f'|-Train-| Iteration:{iteration} mlm loss:{mlm_loss.item():.3f} disc loss:{disc_loss.item():.3f}')
