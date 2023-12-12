@@ -15,21 +15,22 @@ from torchaudio.transforms import MelScale, Spectrogram
 class LogMelSpec(torch.nn.Module):
     def __init__(self,
                  sample_rate=16000,
-                 win_ms=25, hop_ms=10,
+                 #win_ms=25, hop_ms=10,
+                 win=400, hop=160,
                  n_freq=201, n_mels=40,
                  **kwargs):
 
         super(LogMelSpec, self).__init__()
         self.eps = 1e-10 
 
-        win = round(win_ms * sample_rate / 1000)
-        hop = round(hop_ms * sample_rate / 1000)
+        #win = round(win_ms * sample_rate / 1000)
+        #hop = round(hop_ms * sample_rate / 1000)
         n_fft = (n_freq - 1) * 2
         self._win_args = {"n_fft": n_fft, "hop_length": hop, "win_length": win}
         self.register_buffer("_window", torch.hann_window(win))
 
         self._stft_args = {
-            "center": True,
+            "center": False,#True,
             "pad_mode": "reflect",
             "normalized": False,
             "onesided": True,

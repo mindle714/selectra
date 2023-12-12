@@ -6,15 +6,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import pad_to_multiple, compute_mask_indices
-from .soundstream import _infer_device, load_codec, CausalConv1d
+from .utils import pad_to_multiple, compute_mask_indices, LogMelSpec
+from .soundstream import load_codec
 from .multihead_attention import MultiheadAttention
 
 class Selectra(nn.Module):
     def __init__(self, 
                  emb = 512, enc_emb = 768, enc_layers = 6, #12,
                  #mask_prob = 0.65, mask_length = 10):
-                 mask_prob = 0.2, mask_length = 10, dev = 'cuda:0'):
+                 mask_prob = 0.1, mask_length = 5, dev = 'cuda:0'):
 
         super().__init__()
         self.emb = emb
@@ -25,11 +25,11 @@ class Selectra(nn.Module):
         self.mask_emb = nn.Parameter(
             torch.FloatTensor(self.enc_emb).uniform_())
 
-        self.pre_conv = CausalConv1d(1, 32, 7)
+        self.pre_conv = nn.Sequential(nn.Conv1d(1, 32, kernel_size=1), nn.GELU())
         #feat_enc_layers = [(512, 10, 5)] + \
         #        [(512, 3, 2)] * 4 + [(512,2,2)] + [(512,2,2)]
-        #feat_enc_layers = [(512, 10, 5)] * 2 + [(512, 8, 4), (512, 4, 2)]
-        feat_enc_layers = [(64, 4, 2), (128, 8, 4)] + [(256, 10, 5)] * 2
+        feat_enc_layers = [(64, 10, 5)] * 2 + [(128, 8, 4), (192, 4, 2)]
+        #feat_enc_layers = [(64, 4, 2), (128, 8, 4)] + [(256, 10, 5)] * 2
         self.feat_enc = FeatureEncoder(32, self.enc_emb,
             conv_layers=feat_enc_layers, dropout=0.0, conv_bias=False)
 
@@ -37,17 +37,20 @@ class Selectra(nn.Module):
         self.num_quant, self.quant_emb, _ = self.codec.quantizer.codebooks.shape
 
         self.generator = TransformerEncoder(
-            enc_layers, self.enc_emb, self.enc_emb // 4, 3072 // 4)
-        dev = _infer_device()
+            enc_layers, self.enc_emb, self.enc_emb // 4, 3072 // 4,
+            dropout = 0., layerdrop = 0.)
         self.gen_projs = [nn.Linear(self.enc_emb // 4, \
             self.quant_emb, bias = False, device=dev) \
             for _ in range(self.num_quant)]
 
         self.discriminator = TransformerEncoder(
-            enc_layers, self.enc_emb, self.enc_emb, 3072)
+            enc_layers, self.enc_emb, self.enc_emb, 3072,
+            dropout = 0., layerdrop = 0.)
         self.disc_proj = nn.Linear(self.enc_emb, 2)
 
     def forward(self, x, padding_mask = None, mask = False):
+        self.codec.eval()
+
         x_orig = x
         x = x.unsqueeze(1)
 
@@ -57,7 +60,7 @@ class Selectra(nn.Module):
 
             return x_disc
 
-        x_q = self.codec(x, mode='quantize')
+        x_q = self.codec(x, mode='quantize').detach()
         x = self.feat_enc(self.pre_conv(x))
 
         B, T, C = x.shape
@@ -96,14 +99,13 @@ class Selectra(nn.Module):
         mlm_loss = F.cross_entropy(x_projs[:,:,:,0], x_q[:,:,0], reduction='none')
         #mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
         #mlm_loss /= (B * T)
-        mlm_loss = (mask_indices * mlm_loss).sum()
-        mlm_loss /= (B * T)
+        mlm_loss = (mask_indices * mlm_loss).sum(1) / mask_indices.sum(1)
+        mlm_loss = mlm_loss.mean()
 
         x_gen = torch.zeros_like(x_q)
         x_gen[~mask_indices] += x_q[~mask_indices]
         x_gen[mask_indices] += x_indices[mask_indices]
 
-        # TODO disable updating
         x_gen = self.codec.quantizer.get_output_from_indices(x_gen)
         x_gen = self.codec(x_gen, mode='decode')
         x_gen_pad = max(x_orig.shape[-1] - x_gen.shape[-1], 0)
@@ -113,9 +115,9 @@ class Selectra(nn.Module):
         x_disc = self.discriminator(x_disc)
         x_disc = self.disc_proj(x_disc)
 
-        disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
+        #disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
 
-        return mlm_loss, disc_loss
+        return mlm_loss, mlm_loss#disc_loss
 
 class FeatureEncoder(nn.Module):
     def __init__(self, in_d, out_d,
@@ -167,10 +169,12 @@ def make_conv_pos(e, k, g):
 class TransformerEncoder(nn.Module):
     def __init__(self, enc_layers = 12, 
                  in_emb = 768, emb = 768, fft_emb = 3072, 
-                 dropout: float = 0.1):
+                 dropout: float = 0.1,
+                 layerdrop: float = 0.05):
 
         super().__init__()
 
+        self.dropout = dropout
         self.in_emb = in_emb
         self.emb = emb
         self.enc_layers = enc_layers
@@ -185,7 +189,7 @@ class TransformerEncoder(nn.Module):
             [TransformerEncLayer(self.emb, fft_emb) for _ in range(self.enc_layers)]
         )
         self.layer_norm = nn.LayerNorm(self.in_emb)
-        self.layerdrop = 0.05
+        self.layerdrop = layerdrop
 
         self.apply(init_bert_params)
 
@@ -203,7 +207,7 @@ class TransformerEncoder(nn.Module):
         if self.emb_conv is not None:
             x = self.emb_conv(x)
 
-        x = F.dropout(x, p=0.1, training=self.training)
+        x = F.dropout(x, p=self.dropout, training=self.training)
         x = x.transpose(0, 1)
 
         for i, layer in enumerate(self.layers):

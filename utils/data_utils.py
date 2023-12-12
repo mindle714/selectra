@@ -83,6 +83,7 @@ class AudioSetCollate():
             if self.normalize:
                 wav -= wav.mean()
                 wav /= wav.std()
+                wav *= 0.1
 
             wav_padded[i, :wav.shape[0]] = wav
 
