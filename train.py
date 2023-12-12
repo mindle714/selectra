@@ -43,7 +43,6 @@ def main(args):
     grad_clip_thresh     = config['optimization']['grad_clip_thresh']
     lr = config['optimization']['lr']
     iters_per_validation = config['optimization']['iters_per_validation']
-    accumulation     = config['optimization']['accumulation']
     output_directory = config['train']['output_directory']
     output_name      = config['train']['output_name']
 
@@ -95,11 +94,11 @@ def main(args):
 
             iteration += 1
 
-            nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
-            optimizer.step()
-            optimizer.zero_grad()
-
             if iteration%accumulation == 0:
+                nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+                optimizer.step()
+                optimizer.zero_grad()
+
                 writer.add_losses(ctc_loss.item(), iteration, 'Train', 'ctc_loss')
                 print(f'|-Train-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
                 loss=0
