@@ -39,8 +39,8 @@ class AudioSet(torch.utils.data.Dataset):
         path_wav = os.path.join(self.data_path, path_wav)
 
         wav, _ = sf.read(path_wav)
-        wav = wav[:((len(wav)//320) -1)* 320 + 80]
-        #print(wav.shape[0] / 320, wav.shape[0])
+        #wav = wav[:((len(wav)//320) -1)* 320 + 80]
+        wav = wav[:((len(wav)//200) -1) * 200]
 
         script_id = text_to_sequence(script, ['custom_english_cleaners'])
         #print(wav.shape, len(script_id))

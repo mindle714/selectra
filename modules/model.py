@@ -14,6 +14,15 @@ class Model(nn.Module):
         self.nclass = self.hp['model']['n_symbols']
         self.fc     = nn.Linear(self.enc_hidden_dim, self.nclass)
         
-    def forward(self, wav_padded, wav_lengths, text_padded, text_lengths, criterion):
-        return self.model(wav_padded, mask = True)
-        
+    def forward(self, wav_padded, wav_lengths, text_padded, text_lengths, criterion, mask=True):
+        if mask:
+            return self.model(wav_padded, mask = mask)
+        else:
+            #self.model.eval()
+            #with torch.no_grad():
+            x_disc  = self.model(wav_padded, mask = mask)
+            logits      = self.fc(x_disc) # B, T, C
+            logits      = logits.transpose(0,1).log_softmax(2).detach().requires_grad_()
+            wav_lengths = wav_lengths // 200 - 2
+            ctc_loss    = criterion(logits, text_padded, wav_lengths, text_lengths)
+            return ctc_loss
