@@ -33,7 +33,7 @@ class Selectra(nn.Module):
         self.feat_enc = FeatureEncoder(32, self.enc_emb,
             conv_layers=feat_enc_layers, dropout=0.0, conv_bias=False)
 
-        self.codec = load_codec()
+        self.codec = load_codec(dev)
         self.num_quant, self.quant_emb, _ = self.codec.quantizer.codebooks.shape
 
         self.generator = TransformerEncoder(

@@ -17,8 +17,8 @@ def _infer_device():
     else:
         return 'cpu'
 
-def load_codec():
-    device = _infer_device()
+def load_codec(device):
+    #device = _infer_device()
     checkpoint_path = hf_hub_download(
         repo_id='haydenshively/SoundStream', 
         filename='soundstream_variant_naturalspeech2.pt')
