@@ -10,7 +10,6 @@ class Model(nn.Module):
         self.hidden_dim = self.hp['model']['hidden_dim']
         self.enc_hidden_dim = self.hp['model']['enc_hidden_dim']
         self.model = Selectra(self.hidden_dim, self.enc_hidden_dim, dev = self.device)
-
         self.nclass = self.hp['model']['n_symbols']
         self.fc     = nn.Linear(self.enc_hidden_dim, self.nclass)
         
@@ -18,8 +17,6 @@ class Model(nn.Module):
         if mask:
             return self.model(wav_padded, mask = mask)
         else:
-            #self.model.eval()
-            #with torch.no_grad():
             x_disc  = self.model(wav_padded, mask = mask)
             logits      = self.fc(x_disc) # B, T, C
             logits      = logits.transpose(0,1).log_softmax(2).detach().requires_grad_()

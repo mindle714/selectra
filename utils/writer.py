@@ -19,7 +19,7 @@ class Writer(SummaryWriter):
         super(Writer, self).__init__(log_dir)
 
     def add_losses(self, mel_loss, global_step, phase, name_loss):
-        self.add_scalar(f'{phase}_{name_loss}', mel_loss, global_step)
+        self.add_scalar(f'{phase}/{name_loss}', mel_loss, global_step)
 
     def add_sounds(self, target, output, iteration, mode, sample_rate): 
         B = target.size(0)
