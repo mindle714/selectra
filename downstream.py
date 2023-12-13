@@ -73,7 +73,7 @@ def main(args):
                                  weight_decay=0.9)
 
     criterion = nn.CTCLoss(blank=0)
-    writer   = get_writer(output_directory, output_name)
+    writer    = get_writer(output_directory, output_name)
     loss = 0
     iteration = 0
 

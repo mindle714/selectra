@@ -73,8 +73,8 @@ def main(args):
 
     model     = Model(config, f'cuda:{str(args.gpu)}').to(device)
     optimizer = torch.optim.Adam(model.parameters(),
-                                 lr=lr,
-                                 weight_decay=0.9)
+                                 lr=lr)
+                                 #weight_decay=0.9)
 
     criterion = nn.CTCLoss(blank=0)
     writer   = get_writer(output_directory, output_name)

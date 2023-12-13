@@ -17,9 +17,9 @@ class Model(nn.Module):
         if mask:
             return self.model(wav_padded, mask = mask)
         else:
-            x_disc  = self.model(wav_padded, mask = mask)
+            x_disc      = self.model(wav_padded, mask = mask)
             logits      = self.fc(x_disc) # B, T, C
-            logits      = logits.transpose(0,1).log_softmax(2).detach().requires_grad_()
+            logits      = logits.log_softmax(2).transpose(0,1)
             wav_lengths = wav_lengths // 200 - 2
             ctc_loss    = criterion(logits, text_padded, wav_lengths, text_lengths)
             return ctc_loss

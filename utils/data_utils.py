@@ -26,7 +26,7 @@ class AudioSet(torch.utils.data.Dataset):
             self.list_wavs = load_filepaths(hparams['train']['training_files'])
             random.shuffle(self.list_wavs)
         elif process_type == 'val':
-            self.list_wavs = load_filepaths(hparams['train']['validation_files'])
+            self.list_wavs = load_filepaths(hparams['train']['validation_files'])[:100]
         else:
             raise Exception('Choose between [train, val]')
 
@@ -43,7 +43,7 @@ class AudioSet(torch.utils.data.Dataset):
         wav = wav[:((len(wav)//200) -1) * 200]
 
         script_id = text_to_sequence(script, ['custom_english_cleaners'])
-        #print(wav.shape, len(script_id))
+        #print(min(script_id))
         wav = torch.FloatTensor(wav)
         script_id = torch.LongTensor(script_id)
 
