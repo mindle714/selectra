@@ -40,7 +40,12 @@ class AudioSet(torch.utils.data.Dataset):
 
         wav, _ = sf.read(path_wav)
         #wav = wav[:((len(wav)//320) -1)* 320 + 80]
-        wav = wav[:((len(wav)//200) -1) * 200]
+        
+        sr = 16000
+        wav_len = len(wav)
+        start = random.randint(0,wav_len-sr)
+        
+        wav = wav[start:((wav_len//200) -1) * 200]
 
         script_id = text_to_sequence(script, ['custom_english_cleaners'])
         #print(wav.shape, len(script_id))
