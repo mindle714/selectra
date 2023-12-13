@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .utils import pad_to_multiple, compute_mask_indices, LogMelSpec
+from utils.utils import accuracy
 from .soundstream import load_codec
 from .multihead_attention import MultiheadAttention
 
@@ -96,6 +97,7 @@ class Selectra(nn.Module):
         if x_q.shape[1] > x_indices.shape[1]:
             x_q = x_q[:,:x_indices.shape[1],:]
 
+        out_acc = accuracy(x_indices[:,:,0], x_q[:,:,0])
         #mlm_loss = F.cross_entropy(x_projs, x_q, reduction='none')
         mlm_loss = F.cross_entropy(x_projs[:,:,:,0], x_q[:,:,0], reduction='none')
         #mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
@@ -118,7 +120,7 @@ class Selectra(nn.Module):
 
         disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
 
-        return mlm_loss, disc_loss
+        return mlm_loss, disc_loss, out_acc
 
 class FeatureEncoder(nn.Module):
     def __init__(self, in_d, out_d,
