@@ -20,14 +20,16 @@ def validate(model, criterion, val_loader, iteration, writer, device):
             wav_padded, wav_lengths, txt_padded, txt_lengths = [
                 x.to(device) for x in batch
             ]
-            ctc_loss, _ = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
-            val_loss += ctc_loss.item() * len(batch[0])
+            mlm_loss, _ = model(
+                wav_padded, wav_lengths, 
+                txt_padded, txt_lengths, criterion)
+            val_loss += mlm_loss.item() * len(batch[0])
 
         val_loss /= n_data
 
-        print(f'|-Validation-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
+        print(f'|-Validation-| Iteration:{iteration} ctc loss:{mlm_loss.item():.3f}')
 
-    writer.add_losses(ctc_loss.item(), iteration, 'Validation', 'ctc_loss')
+    writer.add_losses(mlm_loss.item(), iteration, 'Validation', 'mlm_loss')
     model.train()
     
     
@@ -67,8 +69,8 @@ def main(args):
 
     model     = Model(config, f'cuda:{str(args.gpu)}').to(device)
     optimizer = torch.optim.Adam(model.parameters(),
-                                 lr=lr,
-                                 weight_decay=0.9)
+                                 lr=lr)
+                                 #weight_decay=0.9)
 
     criterion = nn.CTCLoss(blank=0)
     writer   = get_writer(output_directory, output_name)
@@ -76,7 +78,8 @@ def main(args):
     iteration = 0
     ### Load pre-trained model ###
     if args.iteration != None:
-        load_checkpoint(model, optimizer, args.iteration, f'{output_directory}/{output_name}')
+        load_checkpoint(model, optimizer, args.iteration, 
+            f'{output_directory}/{output_name}')
         iteration += args.iteration
 
     model.train()
@@ -87,21 +90,28 @@ def main(args):
                 x.to(device) for x in batch
             ]
 
-            ctc_loss, outputs = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
+            mlm_loss, disc_loss = model(
+                #wav_padded[:,:240000], wav_lengths, 
+                wav_padded[:,:160000], wav_lengths, 
+                txt_padded, txt_lengths, criterion)
 
-            sub_loss = (ctc_loss)/accumulation
+            sub_loss = (mlm_loss)/accumulation
             sub_loss.backward()
             loss = loss+sub_loss.item()
 
             iteration += 1
 
-            nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
-            optimizer.step()
-            optimizer.zero_grad()
+#            nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+#            optimizer.step()
+#            optimizer.zero_grad()
 
             if iteration%accumulation == 0:
-                writer.add_losses(ctc_loss.item(), iteration, 'Train', 'ctc_loss')
-                print(f'|-Train-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
+                nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+                optimizer.step()
+                optimizer.zero_grad()
+
+                writer.add_losses(mlm_loss.item(), iteration, 'Train', 'mlm_loss')
+                print(f'|-Train-| Iteration:{iteration} ctc loss:{mlm_loss.item():.3f}')
                 loss=0
 
             if iteration%(iters_per_validation*accumulation)==0:
