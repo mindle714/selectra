@@ -23,9 +23,9 @@ def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
                 'learning_rate': learning_rate}, f'{filepath}/checkpoint_{iteration}')
     print(f"Saving model and optimizer state at iteration {iteration} to {filepath}")
 
-def load_checkpoint(model, optimizer, iteration, filepath):
+def load_checkpoint(model, optimizer, iteration, filepath, device):
 
-    checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}')
+    checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}', map_location=f'cuda:{device.index}')
     model.load_state_dict(checkpoint['state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer'])
     iteration = checkpoint['iteration']
