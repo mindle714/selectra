@@ -21,7 +21,8 @@ def validate(model, criterion, val_loader, iteration, writer, device):
             wav_padded, wav_lengths, txt_padded, txt_lengths = [
                 x.to(device) for x in batch
             ]
-            ctc_loss, _ = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
+
+            ctc_loss  = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion, mask=False)
             val_loss += ctc_loss.item() * len(batch[0])
 
         val_loss /= n_data
@@ -77,7 +78,7 @@ def main(args):
     iteration = 0
 
     ### Load pre-trained model ###
-    #load_checkpoint(model, optimizer, selectra_checkpoint, f'{output_directory}/{pretrained_name}')
+    load_checkpoint(model, optimizer, selectra_checkpoint, f'{output_directory}/{pretrained_name}', device)
 
     ### Load pre-trained downstream model ###
     if args.iteration != None:
