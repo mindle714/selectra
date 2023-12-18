@@ -2,6 +2,7 @@ from torch.utils.data import DataLoader
 import torch
 import matplotlib.pyplot as plt
 import yaml
+import shutil
 
 def accuracy(ind_estimated, ind_target):
     count   = torch.sum(ind_estimated == ind_target)
@@ -50,3 +51,6 @@ def reorder_batch(x, n_gpus):
         new_x[i::n_gpus] = x[i*chunk_size:(i+1)*chunk_size]
     
     return new_x
+
+def copy_file(from_file_path, to_file_path):
+    shutil.copyfile(from_file_path, to_file_path)

@@ -74,6 +74,7 @@ def main(args):
 
     criterion = nn.CTCLoss(blank=0)
     writer    = get_writer(output_directory, output_name)
+    copy_file(config_path, os.path.join(output_directory, output_name, config_path.split('/')[-1]))
     loss = 0
     iteration = 0
 
@@ -112,7 +113,8 @@ def main(args):
 
             if iteration%(iters_per_validation*accumulation)==0:
                 validate(model, criterion, val_loader, iteration, writer, device)
-                
+
+            if iteration%(iters_per_checkpoint*accumulation)==0:
                 save_checkpoint(model,
                                 optimizer,
                                 lr,
