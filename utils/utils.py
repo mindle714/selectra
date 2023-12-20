@@ -5,12 +5,14 @@ import yaml
 import shutil
 from utils.data_utils import *
 
-def accuracy(ind_estimated, ind_target):
+def accuracy(ind_estimated, ind_target, data_name):
     count   = torch.sum(ind_estimated == ind_target)
-    if len(ind_estimated.size()) == 2:
+    if data_name == 'libri':
         results = count / (ind_estimated.shape[0] * ind_estimated.shape[1]) * 100
-    elif len(ind_estimated.size()) == 1:
-        results = count / ind_estimated.shape[0] * 100
+    elif data_name == 'vox1':
+        results = count / (ind_estimated.shape[0] * 1251) * 100
+    elif data_name == 'KeywordSpotting':
+        results = count / (ind_estimated.shape[0] * 13) * 100
     return results
 
 def load_yaml(path):
@@ -33,6 +35,8 @@ def load_checkpoint(model, optimizer, iteration, filepath, device):
     checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}', map_location=f'cuda:{device.index}')
     checkpoint['state_dict']['fc_sv.weight'] = torch.FloatTensor(torch.randn(1251, 768))
     checkpoint['state_dict']['fc_sv.bias'] = torch.FloatTensor(torch.randn(1251))
+    checkpoint['state_dict']['fc_ks.weight'] = torch.FloatTensor(torch.randn(30, 768))
+    checkpoint['state_dict']['fc_ks.bias'] = torch.FloatTensor(torch.randn(30))
     model.load_state_dict(checkpoint['state_dict'])
     #optimizer.load_state_dict(checkpoint['optimizer'])
     iteration = checkpoint['iteration']
@@ -71,7 +75,7 @@ def data_preparation(process, config, data_name):
                                     batch_size=config['train']['batch_size'], 
                                     collate_fn= collate_fn,
                                     drop_last=True)
-        elif data_name == 'vox1':
+        elif data_name == 'vox1' or data_name == 'KeywordSpotting':
             train_loader = DataLoader(trainset,
                                     shuffle=True,
                                     batch_size=config['train']['batch_size'], 
@@ -86,7 +90,7 @@ def data_preparation(process, config, data_name):
                                     batch_size=1, 
                                     collate_fn=collate_fn,
                                     drop_last=True)
-        elif data_name == 'vox1':
+        elif data_name == 'vox1' or data_name == 'KeywordSpotting':
             val_loader = DataLoader(valset,
                                     shuffle=True,
                                     batch_size=1,
