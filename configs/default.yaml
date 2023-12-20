@@ -1,11 +1,11 @@
 train: 
   seed: 1234
   output_directory: 'training_log'
-  output_name: 'test_zerobias'
-  data_path: '/ssd/KeywordSpotting'
-  training_files: '/home/miseul/cousework/selectra/filelists/keyword_train.txt'
-  validation_files: '/home/miseul/cousework/selectra/filelists/keyword_val.txt'
-  batch_size: 2
+  output_name: 'test2'
+  data_path: '/ssd/vox1'
+  training_files: '/home/miseul/cousework/selectra/filelists/vox1_train.txt'
+  validation_files: '/home/miseul/cousework/selectra/filelists/vox1_val.txt'
+  batch_size: 64
   selectra_checkpoint: 252000  
 
 data:
@@ -18,8 +18,8 @@ model:
 
 optimization:
   lr: 0.00005
-  grad_clip_thresh: 1.0
-  accumulation: 100
-  iters_per_validation: 100
-  iters_per_checkpoint: 10000
+  grad_clip_thresh: 5.0
+  accumulation: 4
+  iters_per_validation: 1000
+  iters_per_checkpoint: 1000
   train_steps: 200000

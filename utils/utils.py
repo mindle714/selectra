@@ -4,15 +4,17 @@ import matplotlib.pyplot as plt
 import yaml
 import shutil
 from utils.data_utils import *
+import torch.nn as nn
+
 
 def accuracy(ind_estimated, ind_target, data_name):
     count   = torch.sum(ind_estimated == ind_target)
     if data_name == 'libri':
         results = count / (ind_estimated.shape[0] * ind_estimated.shape[1]) * 100
     elif data_name == 'vox1':
-        results = count / (ind_estimated.shape[0] * 1251) * 100
+        results = count / ind_estimated.shape[0] * 100
     elif data_name == 'KeywordSpotting':
-        results = count / (ind_estimated.shape[0] * 13) * 100
+        results = count / ind_estimated.shape[0]* 100
     return results
 
 def load_yaml(path):
@@ -33,10 +35,12 @@ def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
 def load_checkpoint(model, optimizer, iteration, filepath, device):
 
     checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}', map_location=f'cuda:{device.index}')
-    checkpoint['state_dict']['fc_sv.weight'] = torch.FloatTensor(torch.randn(1251, 768))
-    checkpoint['state_dict']['fc_sv.bias'] = torch.FloatTensor(torch.randn(1251))
-    checkpoint['state_dict']['fc_ks.weight'] = torch.FloatTensor(torch.randn(30, 768))
-    checkpoint['state_dict']['fc_ks.bias'] = torch.FloatTensor(torch.randn(30))
+    checkpoint['state_dict']['fc_sv.weight'] = torch.FloatTensor(torch.empty(1251, 768))
+    nn.init.trunc_normal_(checkpoint['state_dict']['fc_sv.weight'])
+
+    checkpoint['state_dict']['fc_ks.weight'] = torch.FloatTensor(torch.empty(10, 768))
+    nn.init.trunc_normal_(checkpoint['state_dict']['fc_ks.weight'])
+
     model.load_state_dict(checkpoint['state_dict'])
     #optimizer.load_state_dict(checkpoint['optimizer'])
     iteration = checkpoint['iteration']
