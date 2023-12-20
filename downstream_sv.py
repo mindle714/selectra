@@ -9,7 +9,7 @@ from utils.writer import get_writer
 from utils.utils import *
 import tqdm
 import torch.optim as optim
-def validate(model, criterion, val_loader, iteration, writer, device):
+def validate(model, criterion, val_loader, iteration, writer, device, data_name):
     
     model.eval()
     with torch.no_grad():
@@ -18,18 +18,18 @@ def validate(model, criterion, val_loader, iteration, writer, device):
         for i, batch in enumerate(tqdm.tqdm(val_loader)):
 
             n_data += len(batch[0])
-            wav_padded, wav_lengths, txt_padded, txt_lengths = [
+            wav_padded, spk_ids = [
                 x.to(device) for x in batch
             ]
 
-            ctc_loss  = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion, mask=False)
-            val_loss += ctc_loss.item() * len(batch[0])
+            cls_loss, acc_out  = model(wav_padded, spk_ids, criterion=criterion, mask=False, data_name=data_name)
+            val_loss += cls_loss.item() * len(batch[0])
 
         val_loss /= n_data
 
-        print(f'|-Validation-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
+        print(f'|-Validation-| Iteration:{iteration} cls_loss:{cls_loss.item():.3f}')
 
-    writer.add_losses(ctc_loss.item(), iteration, 'Validation', 'ctc_loss')
+    writer.add_losses(cls_loss.item(), iteration, 'Validation', 'cls_loss')
     model.train()
     
     
@@ -103,7 +103,7 @@ def main(args):
                 loss=0
 
             if iteration%(iters_per_validation*accumulation)==0:
-                validate(model, criterion, val_loader, iteration, writer, device)
+                validate(model, criterion, val_loader, iteration, writer, device, data_name)
 
             if iteration%(iters_per_checkpoint*accumulation)==0:
                 save_checkpoint(model,
