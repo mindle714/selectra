@@ -14,28 +14,25 @@ def validate(model, criterion, val_loader, iteration, writer, device, data_name)
     model.eval()
     with torch.no_grad():
 
-        n_data, val_loss = 0, 0
+        n_data, val_loss, acc = 0, 0, 0
         for i, batch in enumerate(tqdm.tqdm(val_loader)):
 
             n_data += len(batch[0])
-            wav_padded, wav_lengths, txt_padded, txt_lengths = [
+            wav_padded, spk_ids = [
                 x.to(device) for x in batch
             ]
 
-            ctc_loss  = model(wav_padded, 
-                              txt_padded, 
-                              wav_lengths, 
-                              txt_lengths, 
-                              criterion, 
-                              mask=False,
-                              data_name=data_name)
-            val_loss += ctc_loss.item() * len(batch[0])
+            cls_loss, acc_out = model(wav_padded, spk_ids, criterion=criterion, mask=False, data_name=data_name)
+            val_loss += cls_loss.item() * len(batch[0])
+            acc      += acc_out
 
         val_loss /= n_data
+        acc /= n_data
 
-        print(f'|-Validation-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
+        print(f'|-Validation-| Iteration:{iteration} ctc loss:{val_loss:.3f} acc:{acc.item():.3f}')
 
-    writer.add_losses(ctc_loss.item(), iteration, 'Validation', 'ctc_loss')
+    writer.add_losses(val_loss, iteration, 'Validation', 'cls_loss')
+    writer.add_losses(acc.item(), iteration, 'Validation', 'acc')
     model.train()
     
     
@@ -53,40 +50,27 @@ def main(args):
     iters_per_validation = config['optimization']['iters_per_validation']
     output_directory = config['train']['output_directory']
     pretrained_name  = config['train']['output_name']
-    output_name      = f'{pretrained_name}_downstream'
+    output_name      = f'{pretrained_name}_downstream_ks'
     selectra_checkpoint = config['train']['selectra_checkpoint']
-    data_name = config['train']['training_files'].split('/')[-1].split('_')[0]
+    data_name = config['train']['data_path'].split('/')[-1]
 
     device   = torch.device(f'cuda:{str(args.gpu)}')
 
-    trainset = AudioSet('train', config)
-    collate_fn   = AudioSetCollate()
-    train_loader = DataLoader(trainset,
-                            shuffle=True,
-                            batch_size=config['train']['batch_size'], 
-                            collate_fn= collate_fn,
-                            drop_last=True)
-
-    valset = AudioSet('val', config)
-    collate_fn = AudioSetCollate()
-    val_loader = DataLoader(valset,
-                            shuffle=True,
-                            batch_size=1, 
-                            collate_fn=collate_fn,
-                            drop_last=True)
+    train_loader = data_preparation('train', config, data_name)
+    val_loader   = data_preparation('val', config, data_name) 
 
     model     = Model(config, f'cuda:{str(args.gpu)}').to(device)
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=lr)
 
-    criterion = nn.CTCLoss(blank=0)
+    criterion = nn.CrossEntropyLoss()
     writer    = get_writer(output_directory, output_name)
     copy_file(config_path, os.path.join(output_directory, output_name, config_path.split('/')[-1]))
     loss = 0
     iteration = 0
 
     ### Load pre-trained model ###
-    load_checkpoint(model, optimizer, selectra_checkpoint, f'{output_directory}/{pretrained_name}', device)
+    #load_checkpoint(model, optimizer, selectra_checkpoint, f'{output_directory}/{pretrained_name}', device)
 
     ### Load pre-trained downstream model ###
     if args.iteration != None:
@@ -97,33 +81,26 @@ def main(args):
     print("|-Train-| Training Start!!!")
     while iteration < (train_steps * accumulation):
         for i, batch in enumerate(train_loader):
-            wav_padded, wav_lengths, txt_padded, txt_lengths = [
+            wav_padded, spk_ids = [
                 x.to(device) for x in batch
             ]
 
-            ctc_loss = model(wav_padded, 
-                            label_padded=txt_padded,
-                            wav_lengths=wav_lengths, 
-                            label_lengths=txt_lengths, 
-                            criterion=criterion, 
-                            mask=False, 
-                            data_name=data_name)
+            cls_loss, acc_out = model(wav_padded, spk_ids, criterion=criterion, mask=False, data_name=data_name)
 
-            #print('prev', model.fc.weight)
-            sub_loss = (ctc_loss)/accumulation
+            sub_loss = (cls_loss)/accumulation
             sub_loss.backward()
-            #print('post', model.fc.weight)
             loss = loss+sub_loss.item()
 
             iteration += 1
 
             if iteration%accumulation == 0:
-                #nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+                nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
                 optimizer.step()
-                model.zero_grad()
+                optimizer.zero_grad()
 
-                writer.add_losses(ctc_loss.item(), iteration, 'Train', 'ctc_loss')
-                print(f'|-Train-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
+                writer.add_losses(cls_loss.item(), iteration, 'Train', 'cls_loss')
+                writer.add_losses(acc_out.item(), iteration, 'Train', 'accuracy(%)')
+                print(f'|-Train-| Iteration:{iteration} cls loss:{cls_loss.item():.3f} accruacy:{acc_out.item():.3f}')
                 loss=0
 
             if iteration%(iters_per_validation*accumulation)==0:

@@ -14,6 +14,7 @@ class Model(nn.Module):
         self.nclass = self.hp['model']['n_symbols']
         self.fc = nn.Linear(self.enc_hidden_dim, self.nclass)
         self.fc_sv  = nn.Linear(self.enc_hidden_dim, 1251)
+        self.fc_ks  = nn.Linear(self.enc_hidden_dim, 30)
         
     def forward(self, wav_padded, label_padded, wav_lengths=None, label_lengths=None, criterion=None, mask=True, data_name=None):
         if mask:
@@ -22,7 +23,9 @@ class Model(nn.Module):
             """
             asr: label_padded: script
             sv:  label_padded: speaker id
+            sv:  label_padded: keyword id
             """
+
             x_disc      = self.model(wav_padded, mask = mask)
             if data_name == 'libri':
                 logits      = self.fc(x_disc) # B, T, C
@@ -35,5 +38,12 @@ class Model(nn.Module):
                 logits      = self.fc_sv(spkemb) # B, T, C
                 ind_estimated = torch.argmax(logits, 1)
                 cls_loss    = criterion(logits, label_padded)
-                acc_out     = accuracy(ind_estimated, label_padded) 
+                acc_out     = accuracy(ind_estimated, label_padded, data_name) 
+                return cls_loss, acc_out
+            elif data_name == 'KeywordSpotting':
+                spkemb      = torch.mean(x_disc, 1) 
+                logits      = self.fc_ks(spkemb) # B, T, C
+                ind_estimated = torch.argmax(logits, 1)
+                cls_loss    = criterion(logits, label_padded)
+                acc_out     = accuracy(ind_estimated, label_padded, data_name) 
                 return cls_loss, acc_out

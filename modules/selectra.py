@@ -194,7 +194,7 @@ class TransformerEncoder(nn.Module):
         self.layer_norm = nn.LayerNorm(self.in_emb)
         self.layerdrop = layerdrop
 
-        self.apply(init_bert_params)
+        #self.apply(init_bert_params)
 
     def forward(self, x, padding_mask=None):
         if padding_mask is not None:
