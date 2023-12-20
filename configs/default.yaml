@@ -1,12 +1,12 @@
 train: 
   seed: 1234
   output_directory: 'training_log'
-  output_name: 'base'
-  data_path: '/ssd/LibriSpeech/train-clean-100'
-  training_files: '/home/miseul/cousework/selectra/filelists/libri_train.txt'
-  validation_files: '/home/miseul/cousework/selectra/filelists/libri_val.txt'
-  batch_size: 16
-  selectra_checkpoint: 100 
+  output_name: 'test_zerobias'
+  data_path: '/ssd/KeywordSpotting'
+  training_files: '/home/miseul/cousework/selectra/filelists/keyword_train.txt'
+  validation_files: '/home/miseul/cousework/selectra/filelists/keyword_val.txt'
+  batch_size: 2
+  selectra_checkpoint: 252000  
 
 data:
   sampling_rate: 16000
@@ -19,7 +19,7 @@ model:
 optimization:
   lr: 0.00005
   grad_clip_thresh: 1.0
-  accumulation: 10
-  iters_per_validation: 10
+  accumulation: 100
+  iters_per_validation: 100
   iters_per_checkpoint: 10000
   train_steps: 200000
