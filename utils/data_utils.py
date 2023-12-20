@@ -24,21 +24,26 @@ class AudioSet(torch.utils.data.Dataset):
         self.process_type = process_type
         if process_type == 'train':
             self.list_wavs = load_filepaths(hparams['train']['training_files'])
+            self.data_name = hparams['train']['training_files'].split('/')[-1].replace('.txt', '').split('_')[0]
             random.shuffle(self.list_wavs)
         elif process_type == 'val':
             self.list_wavs = load_filepaths(hparams['train']['validation_files'])
+            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0]
         else:
             raise Exception('Choose between [train, val]')
 
-        self.sr_wav = hparams['train']['validation_files']
+        self.sr_wav = hparams['data']['sampling_rate']
         self.data_path = hparams['train']['data_path']
 
     def get_data_pair(self, path_data):
-
-        path_wav, script = path_data.split('|')
+        if self.data_name == 'vox1':
+            path_wav, spk_id = path_data.split(' ')
+        elif self.data_name == 'libri':
+            path_wav, script = path_data.split('|')
         path_wav = os.path.join(self.data_path, path_wav)
 
         wav, _ = sf.read(path_wav)
+=======
         #wav = wav[:((len(wav)//320) -1)* 320 + 80]
         
         sr = 16000
@@ -50,9 +55,17 @@ class AudioSet(torch.utils.data.Dataset):
         script_id = text_to_sequence(script, ['custom_english_cleaners'])
         #print(wav.shape, len(script_id))
         wav = torch.FloatTensor(wav)
-        script_id = torch.LongTensor(script_id)
 
-        return wav, script_id, script
+        if self.data_name == 'vox1':
+            idx = random.randint(0, wav.size(0)-int(self.sr_wav * 2))
+            wav = wav[idx: idx + int(self.sr_wav * 2)]
+            spk_id = int(spk_id)
+            return wav, spk_id
+
+        elif self.data_name == 'libri':
+            script_id = text_to_sequence(script, ['custom_english_cleaners'])
+            script_id = torch.LongTensor(script_id)
+            return wav, script_id, script
 
     def __getitem__(self, index):
         return self.get_data_pair(self.list_wavs[index])

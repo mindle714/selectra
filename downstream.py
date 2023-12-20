@@ -49,6 +49,7 @@ def main(args):
     pretrained_name  = config['train']['output_name']
     output_name      = f'{pretrained_name}_downstream'
     selectra_checkpoint = config['train']['selectra_checkpoint']
+    data_name = config['train']['training_files'].split('/')[-1].split('_')[0]
 
     device   = torch.device(f'cuda:{str(args.gpu)}')
 
@@ -74,11 +75,12 @@ def main(args):
 
     criterion = nn.CTCLoss(blank=0)
     writer    = get_writer(output_directory, output_name)
+    copy_file(config_path, os.path.join(output_directory, output_name, config_path.split('/')[-1]))
     loss = 0
     iteration = 0
 
     ### Load pre-trained model ###
-    load_checkpoint(model, optimizer, selectra_checkpoint, f'{output_directory}/{pretrained_name}', device)
+    #load_checkpoint(model, optimizer, selectra_checkpoint, f'{output_directory}/{pretrained_name}', device)
 
     ### Load pre-trained downstream model ###
     if args.iteration != None:
@@ -93,18 +95,26 @@ def main(args):
                 x.to(device) for x in batch
             ]
 
-            ctc_loss = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion, mask=False)
+            ctc_loss = model(wav_padded, 
+                            label_padded=txt_padded,
+                            wav_lengths=wav_lengths, 
+                            label_lengths=txt_lengths, 
+                            criterion=criterion, 
+                            mask=False, 
+                            data_name=data_name)
 
+            #print('prev', model.fc.weight)
             sub_loss = (ctc_loss)/accumulation
             sub_loss.backward()
+            #print('post', model.fc.weight)
             loss = loss+sub_loss.item()
 
             iteration += 1
 
             if iteration%accumulation == 0:
-                nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+                #nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
                 optimizer.step()
-                optimizer.zero_grad()
+                model.zero_grad()
 
                 writer.add_losses(ctc_loss.item(), iteration, 'Train', 'ctc_loss')
                 print(f'|-Train-| Iteration:{iteration} ctc loss:{ctc_loss.item():.3f}')
@@ -112,7 +122,8 @@ def main(args):
 
             if iteration%(iters_per_validation*accumulation)==0:
                 validate(model, criterion, val_loader, iteration, writer, device)
-                
+
+            if iteration%(iters_per_checkpoint*accumulation)==0:
                 save_checkpoint(model,
                                 optimizer,
                                 lr,
