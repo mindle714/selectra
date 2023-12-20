@@ -43,7 +43,17 @@ class AudioSet(torch.utils.data.Dataset):
         path_wav = os.path.join(self.data_path, path_wav)
 
         wav, _ = sf.read(path_wav)
-        wav = wav[:((len(wav)//200) -1) * 200]
+=======
+        #wav = wav[:((len(wav)//320) -1)* 320 + 80]
+        
+        sr = 16000
+        wav_len = len(wav)
+        start = random.randint(0,wav_len-sr)
+        
+        wav = wav[start:((wav_len//200) -1) * 200]
+
+        script_id = text_to_sequence(script, ['custom_english_cleaners'])
+        #print(wav.shape, len(script_id))
         wav = torch.FloatTensor(wav)
 
         if self.data_name == 'vox1':
