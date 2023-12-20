@@ -36,16 +36,14 @@ class AudioSet(torch.utils.data.Dataset):
         self.data_path = hparams['train']['data_path']
 
     def get_data_pair(self, path_data):
-        if self.data_name == 'vox1':
+        if self.data_name == 'vox1' or self.data_name == 'keyword':
             path_wav, spk_id = path_data.split(' ')
         elif self.data_name == 'libri':
             path_wav, script = path_data.split('|')
         path_wav = os.path.join(self.data_path, path_wav)
 
         wav, _ = sf.read(path_wav)
-=======
-        #wav = wav[:((len(wav)//320) -1)* 320 + 80]
-        
+        """        
         sr = 16000
         wav_len = len(wav)
         start = random.randint(0,wav_len-sr)
@@ -54,18 +52,30 @@ class AudioSet(torch.utils.data.Dataset):
 
         script_id = text_to_sequence(script, ['custom_english_cleaners'])
         #print(wav.shape, len(script_id))
-        wav = torch.FloatTensor(wav)
-
+        """
         if self.data_name == 'vox1':
             idx = random.randint(0, wav.size(0)-int(self.sr_wav * 2))
             wav = wav[idx: idx + int(self.sr_wav * 2)]
+            wav = torch.FloatTensor(wav)
             spk_id = int(spk_id)
             return wav, spk_id
 
         elif self.data_name == 'libri':
+            wav = torch.FloatTensor(wav)
             script_id = text_to_sequence(script, ['custom_english_cleaners'])
             script_id = torch.LongTensor(script_id)
             return wav, script_id, script
+        
+        elif self.data_name == 'keyword':
+            if wav.shape[0] < 16000:
+                wav = np.pad(wav, (0, 16000 - wav.shape[0]), 'reflect')
+
+            wav -= wav.mean()
+            wav /= (wav.std() + 1e-10)
+            wav *= 0.1
+            spk_id = int(spk_id)
+            wav = torch.FloatTensor(wav)
+            return wav, spk_id
 
     def __getitem__(self, index):
         return self.get_data_pair(self.list_wavs[index])
