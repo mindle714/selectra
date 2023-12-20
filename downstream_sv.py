@@ -14,7 +14,7 @@ def validate(model, criterion, val_loader, iteration, writer, device, data_name)
     model.eval()
     with torch.no_grad():
 
-        n_data, val_loss = 0, 0
+        n_data, val_loss, tot_acc = 0, 0, 0
         for i, batch in enumerate(tqdm.tqdm(val_loader)):
 
             n_data += len(batch[0])
@@ -24,12 +24,15 @@ def validate(model, criterion, val_loader, iteration, writer, device, data_name)
 
             cls_loss, acc_out  = model(wav_padded, spk_ids, criterion=criterion, mask=False, data_name=data_name)
             val_loss += cls_loss.item() * len(batch[0])
+            tot_acc  += acc_out
 
         val_loss /= n_data
+        tot_acc /= n_data
 
         print(f'|-Validation-| Iteration:{iteration} cls_loss:{cls_loss.item():.3f}')
 
     writer.add_losses(cls_loss.item(), iteration, 'Validation', 'cls_loss')
+    writer.add_losses(tot_acc, iteration, 'Validation', 'accuracy')
     model.train()
     
     
