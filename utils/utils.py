@@ -3,10 +3,14 @@ import torch
 import matplotlib.pyplot as plt
 import yaml
 import shutil
+from utils.data_utils import *
 
 def accuracy(ind_estimated, ind_target):
     count   = torch.sum(ind_estimated == ind_target)
-    results = count / (ind_estimated.shape[0] * ind_estimated.shape[1]) * 100
+    if len(ind_estimated.size()) == 2:
+        results = count / (ind_estimated.shape[0] * ind_estimated.shape[1]) * 100
+    elif len(ind_estimated.size()) == 1:
+        results = count / ind_estimated.shape[0] * 100
     return results
 
 def load_yaml(path):
@@ -27,8 +31,10 @@ def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
 def load_checkpoint(model, optimizer, iteration, filepath, device):
 
     checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}', map_location=f'cuda:{device.index}')
+    checkpoint['state_dict']['fc_sv.weight'] = torch.FloatTensor(torch.randn(1251, 768))
+    checkpoint['state_dict']['fc_sv.bias'] = torch.FloatTensor(torch.randn(1251))
     model.load_state_dict(checkpoint['state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer'])
+    #optimizer.load_state_dict(checkpoint['optimizer'])
     iteration = checkpoint['iteration']
 
     print(f"Load model and optimizer state at iteration {iteration} of {filepath}")
@@ -54,3 +60,35 @@ def reorder_batch(x, n_gpus):
 
 def copy_file(from_file_path, to_file_path):
     shutil.copyfile(from_file_path, to_file_path)
+
+def data_preparation(process, config, data_name):
+    if process == 'train':
+        trainset = AudioSet('train', config)
+        if data_name == 'libri':
+            collate_fn   = AudioSetCollate()
+            train_loader = DataLoader(trainset,
+                                    shuffle=True,
+                                    batch_size=config['train']['batch_size'], 
+                                    collate_fn= collate_fn,
+                                    drop_last=True)
+        elif data_name == 'vox1':
+            train_loader = DataLoader(trainset,
+                                    shuffle=True,
+                                    batch_size=config['train']['batch_size'], 
+                                    drop_last=True)
+        return train_loader
+    elif process == 'val':
+        valset = AudioSet('val', config)
+        if data_name == 'libri':
+            collate_fn = AudioSetCollate()
+            val_loader = DataLoader(valset,
+                                    shuffle=True,
+                                    batch_size=1, 
+                                    collate_fn=collate_fn,
+                                    drop_last=True)
+        elif data_name == 'vox1':
+            val_loader = DataLoader(valset,
+                                    shuffle=True,
+                                    batch_size=1,
+                                    drop_last=True)
+        return val_loader
