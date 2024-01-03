@@ -8,7 +8,7 @@ from utils.data_utils import *
 from utils.writer import get_writer
 from utils.utils import *
 import tqdm
-
+import torch.optim as optim
 def validate(model, criterion, val_loader, iteration, writer, device, data_name):
     
     model.eval()
@@ -62,6 +62,7 @@ def main(args):
     model     = Model(config, f'cuda:{str(args.gpu)}').to(device)
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=lr)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
 
     criterion = nn.CrossEntropyLoss()
     writer    = get_writer(output_directory, output_name)
@@ -115,6 +116,7 @@ def main(args):
                 
             if iteration==(train_steps*accumulation):
                 break
+        scheduler.step()
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser()

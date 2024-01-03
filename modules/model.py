@@ -13,8 +13,8 @@ class Model(nn.Module):
         self.model = Selectra(self.hidden_dim, self.enc_hidden_dim, dev = self.device)
         self.nclass = self.hp['model']['n_symbols']
         self.fc = nn.Linear(self.enc_hidden_dim, self.nclass)
-        self.fc_sv  = nn.Linear(self.enc_hidden_dim, 1251)
-        self.fc_ks  = nn.Linear(self.enc_hidden_dim, 30)
+        #self.fc_sv  = nn.Linear(self.enc_hidden_dim, 1251, bias=False)
+        #self.fc_ks  = nn.Linear(self.enc_hidden_dim, 10, bias=False)
         
     def forward(self, wav_padded, label_padded, wav_lengths=None, label_lengths=None, criterion=None, mask=True, data_name=None):
         if mask:
@@ -32,7 +32,7 @@ class Model(nn.Module):
                 logits      = logits.transpose(0,1).log_softmax(2)
                 wav_lengths = wav_lengths // 200 - 2
                 ctc_loss    = criterion(logits, label_padded, wav_lengths, label_lengths)
-                return ctc_loss
+                return ctc_loss, logits
             elif data_name =='vox1':
                 spkemb      = torch.mean(x_disc, 1) 
                 logits      = self.fc_sv(spkemb) # B, T, C
