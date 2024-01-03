@@ -3,6 +3,11 @@ import torch
 import matplotlib.pyplot as plt
 import yaml
 
+def accuracy(ind_estimated, ind_target):
+    count   = torch.sum(ind_estimated == ind_target)
+    results = count / (ind_estimated.shape[0] * ind_estimated.shape[1]) * 100
+    return results
+
 def load_yaml(path):
     with open(path, 'r') as f:
         out = f.read()
