@@ -47,6 +47,20 @@ def load_checkpoint(model, optimizer, iteration, filepath, device):
 
     print(f"Load model and optimizer state at iteration {iteration} of {filepath}")
 
+def load_checkpoint_downstream(model, optimizer, filepath, device):
+    #import pdb
+    #pdb.set_trace()
+    checkpoint = torch.load(filepath, map_location=f'cuda:{device.index}')
+    del checkpoint['state_dict']['fc_sv.weight']
+    del checkpoint['state_dict']['fc_sv.bias']
+    #del checkpoint['state_dict']['fc_ks.weight']
+    #del checkpoint['state_dict']['fc_ks.bias']
+    #checkpoint['state_dict']['fc_ks.weight'] = torch.FloatTensor(torch.empty(10, 768))
+    #checkpoint['state_dict']['fc_sv.bias'] = torch.FloatTensor(torch.empty(10))
+    model.load_state_dict(checkpoint['state_dict'])
+
+    print(f"Load model and optimizer state at {filepath}")
+
 def get_mask_from_lengths(lengths):
     #import pdb
     #pdb.set_trace()
