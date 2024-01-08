@@ -22,20 +22,13 @@ class AudioSet(torch.utils.data.Dataset):
     def __init__(self, process_type, hparams):
         random.seed(hparams['train']['seed'])
         self.process_type = process_type
-        self.config = ''
-        if '960' in hparams['train']['training_files']:
-            self.config = '960'
-        else :
-            self.config = ''
-            
         if process_type == 'train':
             self.list_wavs = load_filepaths(hparams['train']['training_files'])
-            
-            self.data_name = hparams['train']['training_files'].split('/')[-1].replace('.txt', '').split('_')[0] + self.config
+            self.data_name = hparams['train']['training_files'].split('/')[-1].replace('.txt', '').split('_')[0]
             random.shuffle(self.list_wavs)
         elif process_type == 'val':
             self.list_wavs = load_filepaths(hparams['train']['validation_files'])
-            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0] + self.config
+            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0]
         else:
             raise Exception('Choose between [train, val]')
 
@@ -67,7 +60,7 @@ class AudioSet(torch.utils.data.Dataset):
             script_id = text_to_sequence(script, ['custom_english_cleaners'])
             script_id = torch.LongTensor(script_id)
             return wav, script_id, script
-        elif self.data_name == 'libri960':
+        elif self.data_name == 'pretrain':
             wav = torch.FloatTensor(wav)
             sr = 16000
             wav_len = len(wav)
@@ -77,8 +70,7 @@ class AudioSet(torch.utils.data.Dataset):
             script_id = text_to_sequence(script, ['custom_english_cleaners'])
             #print(wav.shape, len(script_id))
             script_id = torch.LongTensor(script_id)
-            return wav, script_id, script
-        
+            return wav, script_id, script        
         elif self.data_name == 'keyword':
             if wav.shape[0] < 16000:
                 wav = np.pad(wav, (0, 16000 - wav.shape[0]), 'reflect')
