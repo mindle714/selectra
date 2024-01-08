@@ -81,13 +81,11 @@ class Selectra(nn.Module):
         x_projs = []
         x_indices = []
 
-        x_proj = self.gen_projs[0](x)
-        uniform_ns = torch.rand(x_proj.shape)
         for i in range(len(self.gen_projs)):
             x_proj = self.gen_projs[i](x)
             x_projs.append(x_proj.transpose(2, 1))
 
-            # uniform_ns = torch.rand(x_proj.shape)
+            uniform_ns = torch.rand(x_proj.shape)
             gumbel_ns = -torch.log(-torch.log(uniform_ns + 1e-9) + 1e-9)
             logits = F.softmax(x_proj + gumbel_ns.to(x.device), -1)
             indices = torch.argmax(logits, -1)

@@ -22,13 +22,19 @@ class AudioSet(torch.utils.data.Dataset):
     def __init__(self, process_type, hparams):
         random.seed(hparams['train']['seed'])
         self.process_type = process_type
+        self.config = "960"
         if process_type == 'train':
             self.list_wavs = load_filepaths(hparams['train']['training_files'])
-            self.data_name = hparams['train']['training_files'].split('/')[-1].replace('.txt', '').split('_')[0]
+            if '960' in hparams['train']['training_files']:
+                self.config = "960"
+            else :
+                self.config = "100"
+                
+            self.data_name = hparams['train']['training_files'].split('/')[-1].replace('.txt', '').split('_')[0] + self.config
             random.shuffle(self.list_wavs)
         elif process_type == 'val':
             self.list_wavs = load_filepaths(hparams['train']['validation_files'])
-            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0]
+            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0] + self.config
         else:
             raise Exception('Choose between [train, val]')
 
@@ -38,21 +44,12 @@ class AudioSet(torch.utils.data.Dataset):
     def get_data_pair(self, path_data):
         if self.data_name == 'vox1' or self.data_name == 'keyword':
             path_wav, spk_id = path_data.split(' ')
-        elif self.data_name == 'libri':
+        elif self.data_name.startswith('libri'):
             path_wav, script = path_data.split('|')
         path_wav = os.path.join(self.data_path, path_wav)
 
         wav, _ = sf.read(path_wav)
-        """        
-        sr = 16000
-        wav_len = len(wav)
-        start = random.randint(0,wav_len-sr)
-        
-        wav = wav[start:((wav_len//200) -1) * 200]
 
-        script_id = text_to_sequence(script, ['custom_english_cleaners'])
-        #print(wav.shape, len(script_id))
-        """
 
         if self.data_name == 'vox1':
             idx = random.randint(0, wav.shape[0]-int(self.sr_wav * 2))
@@ -64,10 +61,20 @@ class AudioSet(torch.utils.data.Dataset):
             spk_id = int(spk_id)
             wav = torch.FloatTensor(wav)
             return wav, spk_id
-
-        elif self.data_name == 'libri':
+        elif self.data_name == 'libri100':
             wav = torch.FloatTensor(wav)
             script_id = text_to_sequence(script, ['custom_english_cleaners'])
+            script_id = torch.LongTensor(script_id)
+            return wav, script_id, script
+        elif self.data_name == 'libri960':
+            wav = torch.FloatTensor(wav)
+            sr = 16000
+            wav_len = len(wav)
+            start = random.randint(0,wav_len-sr)
+            wav = wav[start:((wav_len//200) -1) * 200]
+
+            script_id = text_to_sequence(script, ['custom_english_cleaners'])
+            #print(wav.shape, len(script_id))
             script_id = torch.LongTensor(script_id)
             return wav, script_id, script
         
