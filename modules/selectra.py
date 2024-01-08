@@ -81,11 +81,13 @@ class Selectra(nn.Module):
         x_projs = []
         x_indices = []
 
+        x_proj = self.gen_projs[0](x)
+        uniform_ns = torch.rand(x_proj.shape)
         for i in range(len(self.gen_projs)):
             x_proj = self.gen_projs[i](x)
             x_projs.append(x_proj.transpose(2, 1))
 
-            uniform_ns = torch.rand(x_proj.shape)
+            # uniform_ns = torch.rand(x_proj.shape)
             gumbel_ns = -torch.log(-torch.log(uniform_ns + 1e-9) + 1e-9)
             logits = F.softmax(x_proj + gumbel_ns.to(x.device), -1)
             indices = torch.argmax(logits, -1)
@@ -97,13 +99,13 @@ class Selectra(nn.Module):
         if x_q.shape[1] > x_indices.shape[1]:
             x_q = x_q[:,:x_indices.shape[1],:]
 
-        out_acc = accuracy(x_indices[:,:,0], x_q[:,:,0])
-        #mlm_loss = F.cross_entropy(x_projs, x_q, reduction='none')
-        mlm_loss = F.cross_entropy(x_projs[:,:,:,0], x_q[:,:,0], reduction='none')
-        #mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
-        #mlm_loss /= (B * T)
-        mlm_loss = (mask_indices * mlm_loss).sum(1) / mask_indices.sum(1)
-        mlm_loss = mlm_loss.mean()
+        out_acc = accuracy(x_indices[:,:,0], x_q[:,:,0], 'libri')
+        mlm_loss = F.cross_entropy(x_projs, x_q, reduction='none')
+        mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
+        mlm_loss /= (B * T)
+        # mlm_loss = F.cross_entropy(x_projs[:,:,:,0], x_q[:,:,0], reduction='none')
+        # mlm_loss = (mask_indices * mlm_loss).sum(1) / mask_indices.sum(1)
+        # mlm_loss = mlm_loss.mean()
 
         x_gen = torch.zeros_like(x_q)
         x_gen[~mask_indices] += x_q[~mask_indices]
