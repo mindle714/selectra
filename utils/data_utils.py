@@ -22,19 +22,20 @@ class AudioSet(torch.utils.data.Dataset):
     def __init__(self, process_type, hparams):
         random.seed(hparams['train']['seed'])
         self.process_type = process_type
-        self.config = ""
+        self.config = ''
+        if '960' in hparams['train']['training_files']:
+            self.config = '960'
+        else :
+            self.config = ''
+            
         if process_type == 'train':
             self.list_wavs = load_filepaths(hparams['train']['training_files'])
-            if '960' in hparams['train']['training_files']:
-                self.config = "960"
-            else :
-                self.config = ""
             
             self.data_name = hparams['train']['training_files'].split('/')[-1].replace('.txt', '').split('_')[0] + self.config
             random.shuffle(self.list_wavs)
         elif process_type == 'val':
             self.list_wavs = load_filepaths(hparams['train']['validation_files'])
-            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0]
+            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0] + self.config
         else:
             raise Exception('Choose between [train, val]')
 
