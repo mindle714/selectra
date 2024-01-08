@@ -9,7 +9,7 @@ from utils.writer import get_writer
 from utils.utils import *
 import tqdm
 
-def validate(model, criterion, val_loader, iteration, writer, device):
+def validate(model, criterion, val_loader, iteration, writer, device, data_name):
 
     model.eval()
     with torch.no_grad():
@@ -35,6 +35,7 @@ def validate(model, criterion, val_loader, iteration, writer, device):
 
     writer.add_losses(val_mlm_loss, iteration, 'Validation', 'mlm_loss')
     writer.add_losses(val_disc_loss, iteration, 'Validation', 'disc_loss')
+    writer.add_losses(mlm_acc, iteration, 'Validation', 'mlm_acc')
     model.train()
     
     
@@ -110,6 +111,7 @@ def main(args):
                     
                 writer.add_losses(mlm_loss.item(), iteration, 'Train', 'mlm_loss')
                 writer.add_losses(disc_loss.item(), iteration, 'Train', 'disc_loss')
+                writer.add_losses(mlm_acc.item(), iteration, 'Train', 'mlm_acc')
                 print(f'|-Train-| Iteration:{iteration} mlm loss:{mlm_loss.item():.3f} disc loss:{disc_loss.item():.3f} mlm_acc(%):{mlm_acc.item():.3f}')
                 loss=0
 
