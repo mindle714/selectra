@@ -22,19 +22,19 @@ class AudioSet(torch.utils.data.Dataset):
     def __init__(self, process_type, hparams):
         random.seed(hparams['train']['seed'])
         self.process_type = process_type
-        self.config = "960"
+        self.config = ""
         if process_type == 'train':
             self.list_wavs = load_filepaths(hparams['train']['training_files'])
             if '960' in hparams['train']['training_files']:
                 self.config = "960"
             else :
-                self.config = "100"
-                
+                self.config = ""
+            
             self.data_name = hparams['train']['training_files'].split('/')[-1].replace('.txt', '').split('_')[0] + self.config
             random.shuffle(self.list_wavs)
         elif process_type == 'val':
             self.list_wavs = load_filepaths(hparams['train']['validation_files'])
-            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0] + self.config
+            self.data_name = hparams['train']['validation_files'].split('/')[-1].replace('.txt', '').split('_')[0]
         else:
             raise Exception('Choose between [train, val]')
 
@@ -61,7 +61,7 @@ class AudioSet(torch.utils.data.Dataset):
             spk_id = int(spk_id)
             wav = torch.FloatTensor(wav)
             return wav, spk_id
-        elif self.data_name == 'libri100':
+        elif self.data_name == 'libri':
             wav = torch.FloatTensor(wav)
             script_id = text_to_sequence(script, ['custom_english_cleaners'])
             script_id = torch.LongTensor(script_id)
