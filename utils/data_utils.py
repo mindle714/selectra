@@ -53,11 +53,16 @@ class AudioSet(torch.utils.data.Dataset):
         script_id = text_to_sequence(script, ['custom_english_cleaners'])
         #print(wav.shape, len(script_id))
         """
+
         if self.data_name == 'vox1':
-            idx = random.randint(0, wav.size(0)-int(self.sr_wav * 2))
+            idx = random.randint(0, wav.shape[0]-int(self.sr_wav * 2))
             wav = wav[idx: idx + int(self.sr_wav * 2)]
-            wav = torch.FloatTensor(wav)
+
+            wav -= wav.mean()
+            wav /= (wav.std() + 1e-10)
+            wav *= 0.1
             spk_id = int(spk_id)
+            wav = torch.FloatTensor(wav)
             return wav, spk_id
 
         elif self.data_name == 'libri':
