@@ -65,7 +65,9 @@ class AudioSet(torch.utils.data.Dataset):
             wav = torch.FloatTensor(wav)
             sr = 16000
             wav_len = len(wav)
-            start = random.randint(0,wav_len-sr)
+            start = 0
+            if(wav_len-sr > 0) :
+                start = random.randint(0,wav_len-sr)
             
             wav = wav[start:((wav_len//200) -1) * 200]
 
