@@ -1,0 +1,26 @@
+train:
+  seed: 1234
+  output_directory: '/data/yeonahong/training_log'
+  output_name: 'base_240111_1200_batch_2_32_20_200_from_0_to_1_no_limit'
+  data_path: '/data/yeonahong/LibriSpeech/train-clean-100'
+  training_files: '/home/yeona/selectra/filelists/libri_train.txt'
+  validation_files: '/home/yeona/selectra/filelists/libri_val.txt'
+  batch_size: 2
+  selectra_checkpoint: 128000
+
+data:
+  sampling_rate: 16000
+
+model:
+  n_symbols: 27 # alphabet (26) + blank (1)
+  hidden_dim: 512
+  enc_hidden_dim: 768
+
+optimization:
+  lr: 0.00001
+  grad_clip_thresh: 5.0
+  accumulation: 100
+  iters_per_validation: 20
+  iters_per_checkpoint: 200
+  train_steps: 200000
+

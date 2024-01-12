@@ -62,7 +62,6 @@ class AudioSet(torch.utils.data.Dataset):
             return wav, script_id, script
         
         elif self.data_name == 'pretrain':
-            wav = torch.FloatTensor(wav)
             sr = 16000
             wav_len = len(wav)
             start = 0
@@ -74,6 +73,7 @@ class AudioSet(torch.utils.data.Dataset):
             script_id = text_to_sequence(script, ['custom_english_cleaners'])
             #print(wav.shape, len(script_id))
             script_id = torch.LongTensor(script_id)
+            wav = torch.FloatTensor(wav)
             return wav, script_id, script
         
         elif self.data_name == 'keyword':

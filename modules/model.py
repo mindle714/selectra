@@ -13,8 +13,8 @@ class Model(nn.Module):
         self.model = Selectra(self.hidden_dim, self.enc_hidden_dim, dev = self.device)
         self.nclass = self.hp['model']['n_symbols']
         self.fc = nn.Linear(self.enc_hidden_dim, self.nclass)
-        #self.fc_sv  = nn.Linear(self.enc_hidden_dim, 1251, bias=False)
-        #self.fc_ks  = nn.Linear(self.enc_hidden_dim, 10, bias=False)
+        self.fc_sv  = nn.Linear(self.enc_hidden_dim, 1251, bias=False)
+        self.fc_ks  = nn.Linear(self.enc_hidden_dim, 10, bias=False)
         
     def forward(self, wav_padded, label_padded, wav_lengths=None, label_lengths=None, criterion=None, mask=True, data_name=None):
         if mask:

@@ -98,7 +98,7 @@ class Selectra(nn.Module):
             x_q = x_q[:,:x_indices.shape[1],:]
 
         out_acc = accuracy(x_indices[:,:,0], x_q[:,:,0], 'libri')
-        mlm_loss = F.cross_entropy(x_projs[:,:,:,0:3], x_q[:,:,0:3], reduction='none')
+        mlm_loss = F.cross_entropy(x_projs[:,:,:,0:1], x_q[:,:,0:1], reduction='none')
         mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
         mlm_loss /= (B * T)
         # mlm_loss = F.cross_entropy(x_projs[:,:,:,0], x_q[:,:,0], reduction='none')
