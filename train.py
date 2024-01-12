@@ -9,14 +9,14 @@ from utils.writer import get_writer
 from utils.utils import *
 import tqdm
 
-def validate(model, criterion, val_loader, iteration, writer, device, data_name):
+def validate(model, criterion, val_loader, iteration, writer, device):
 
     model.eval()
     with torch.no_grad():
 
         n_data, val_mlm_loss, val_disc_loss = 0, 0, 0
         for i, batch in enumerate(tqdm.tqdm(val_loader)):
-            if i == 10:
+            if i == 200:
                 break
 
             n_data += len(batch[0])
