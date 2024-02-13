@@ -10,15 +10,13 @@ from .utils import pad_to_multiple, compute_mask_indices, LogMelSpec
 from utils.utils import accuracy
 from .soundstream import load_codec
 from .multihead_attention import MultiheadAttention
-from einops import reduce
-import random
 import pdb
 
 class Selectra(nn.Module):
     def __init__(self, 
-                 emb = 512, enc_emb = 768, enc_layers = 12, #12,
+                 emb = 512, enc_emb = 768, enc_layers = 6, #12,
                  #mask_prob = 0.65, mask_length = 10):
-                 mask_prob = 0.15, mask_length = 10, dev = 'cuda:0'):
+                 mask_prob = 0.55, mask_length = 10, dev = 'cuda:0'):
 
         super().__init__()
         self.emb = emb
@@ -26,16 +24,15 @@ class Selectra(nn.Module):
 
         self.mask_prob = mask_prob
         self.mask_length = mask_length
-        self.mask_emb = nn.Parameter(
-            torch.FloatTensor(self.enc_emb).uniform_())
+        self.mask_emb = nn.Parameter(torch.FloatTensor(self.enc_emb).uniform_())
 
         self.codec = load_codec(dev)
-        self.num_quant, self.quant_emb, self.quant_dim = self.codec.quantizer.codebooks.shape
-        
-        self.selected_num_quant = 6 # 사용할 rvq 개수 (1~16)
-        # self.conv1d_1 = nn.Conv1d(in_channels=256, out_channels=384, kernel_size=1)
-        # self.conv1d_2 = nn.Conv1d(in_channels=384, out_channels=512, kernel_size=1)
-        # self.conv1d_3 = nn.Conv1d(in_channels=512, out_channels=768, kernel_size=1)
+        self.num_quant, self.quant_emb, _ = self.codec.quantizer.codebooks.shape
+
+        self.selected_num_quant = 1 # 사용할 rvq 개수 (1~16)
+        self.conv1d_1 = nn.Conv1d(in_channels=16, out_channels=128, kernel_size=1)
+        self.conv1d_2 = nn.Conv1d(in_channels=128, out_channels=256, kernel_size=1)
+        self.conv1d_3 = nn.Conv1d(in_channels=256, out_channels=768, kernel_size=1)
         # self.conv1d = nn.Conv1d(in_channels=16, out_channels=768, kernel_size=1)
         # self.pre_embed = nn.Embedding(self.quant_emb, self.enc_emb)
         # self.pre_ln = nn.Linear(self.selected_num_quant, 1)
@@ -52,12 +49,8 @@ class Selectra(nn.Module):
         self.codec.eval()
 
         x = x.unsqueeze(1)
-        x_in = self.codec(x, mode='contents').detach()
-        x_q = self.codec(x, mode='quantize').detach()
-        x_in = x_in[:self.selected_num_quant,:,:,:]
-        x_q = x_q[:,:,:self.selected_num_quant]
-        # x_in = x_in.float()
-        #x_q = x_in # x_q.shape = (B, T, 1)
+        x_in = self.codec(x, mode='quantize').detach()
+        x_q = x_in[:,:,:self.selected_num_quant] # x_q.shape = (B, T, 1)
 
         if not mask:
             x_disc = self.selectra(x_in)
@@ -65,50 +58,25 @@ class Selectra(nn.Module):
         
         # x_in = self.pre_embed(x_in[:,:,:self.selected_num_quant]).float()
         # x_in = self.pre_ln(x_in.permute(0,1,3,2)).squeeze(-1) # x_in.shape = (B, T, enc_emb_size)
+        x_in = x_in.float()
+        x_in = x_in.permute(0,2,1)
+        # x_in = self.conv1d(x_in)
+        x_in = self.conv1d_1(x_in)
+        x_in = self.conv1d_2(x_in)
+        x_in = self.conv1d_3(x_in)
+        x_in = x_in.permute(0,2,1)
+        B, T, C = x_in.shape
+        mask_indices = compute_mask_indices(
+            (B, T), padding_mask,
+            self.mask_prob, self.mask_length,
+            'normal', 0.,
+            min_masks=10, no_overlap=False, min_space=1,
+            require_same_masks=True, mask_dropout=0.
+        )
+        mask_indices = torch.from_numpy(mask_indices).to(x_in.device)
+        x_in[mask_indices] = self.mask_emb
 
-        n_q, B, T, C = x_in.shape
-        
-        # pdb.set_trace()
-        for i in range(self.selected_num_quant):            
-            mask_indices = compute_mask_indices(
-                (B, T), padding_mask,
-                self.mask_prob, self.mask_length,
-                'static', 0.,
-                min_masks=2, no_overlap=False, min_space=1,
-                require_same_masks=True, mask_dropout=0.
-            )
-            mask_indices = torch.from_numpy(mask_indices).to(x_in[i].device)
-            x_in[i][mask_indices] = self.mask_emb
-        
-        codes_summed = reduce(x_in, 'q ... -> ...', 'sum')
-
-        # codes_summed = codes_summed.permute(0,2,1)
-        # codes_summed = self.conv1d_1(codes_summed)
-        # codes_summed = self.conv1d_2(codes_summed)
-        # codes_summed = self.conv1d_3(codes_summed)
-
-        # codes_summed = self.conv1d(codes_summed)
-        # codes_summed = codes_summed.permute(0,2,1)
-    
-        # mask_indices = compute_mask_indices(
-        #     (B, T), padding_mask,
-        #     self.mask_prob, self.mask_length,
-        #     'static', 0.,
-        #     min_masks=2, no_overlap=False, min_space=1,
-        #     require_same_masks=True, mask_dropout=0.
-        # )
-        # mask_indices = torch.from_numpy(mask_indices).to(x_in.device)
-        # for i in range(n_q):
-        #     x_in[i][mask_indices] = self.mask_emb
-        
-        # codes_summed = reduce(x_in, 'q ... -> ...', 'sum')
-        
-    
-        # ran_n_q = random.randint(0, n_q-1)        
-        # x_in[ran_n_q][mask_indices] = self.mask_emb
-        # codes_summed = reduce(x_in, 'q ... -> ...', 'sum')
-        
-        x_in = self.selectra(codes_summed)
+        x_in = self.selectra(x_in)
 
         x_projs = []
         x_indices = []
@@ -128,15 +96,15 @@ class Selectra(nn.Module):
         # TODO temporary fix; need to add padding scheme same as soundstream
         if x_q.shape[1] > x_indices.shape[1]:
             x_q = x_q[:,:x_indices.shape[1],:]
+        
         out_acc = accuracy(x_indices, x_q, 'libri')
-
-
         mlm_loss = F.cross_entropy(x_projs, x_q.long(), reduction='none')
         mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
         mlm_loss /= (B * T)
 
         x_disc = self.selectra(x_in)
         x_disc = self.disc_proj(x_disc)
+
         disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
 
         return mlm_loss, disc_loss, out_acc

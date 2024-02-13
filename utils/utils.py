@@ -6,11 +6,10 @@ import shutil
 from utils.data_utils import *
 import torch.nn as nn
 
-
 def accuracy(ind_estimated, ind_target, data_name):
     count   = torch.sum(ind_estimated == ind_target)
     if data_name == 'libri':
-        results = count / (ind_estimated.shape[0] * ind_estimated.shape[1]) * 100
+        results = (count / (ind_estimated.shape[0] * ind_estimated.shape[1] * ind_estimated.shape[2])) * 100
     elif data_name == 'vox1':
         results = count / ind_estimated.shape[0] * 100
     elif data_name == 'KeywordSpotting':
@@ -35,10 +34,10 @@ def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
 def load_checkpoint(model, optimizer, iteration, filepath, device):
 
     checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}', map_location=f'cuda:{device.index}')
-    checkpoint['state_dict']['fc_sv.weight'] = torch.FloatTensor(torch.empty(1251, 768))
+    checkpoint['state_dict']['fc_sv.weight'] = torch.FloatTensor(torch.empty(1251, 256))
     nn.init.trunc_normal_(checkpoint['state_dict']['fc_sv.weight'])
 
-    checkpoint['state_dict']['fc_ks.weight'] = torch.FloatTensor(torch.empty(10, 768))
+    checkpoint['state_dict']['fc_ks.weight'] = torch.FloatTensor(torch.empty(10, 256))
     nn.init.trunc_normal_(checkpoint['state_dict']['fc_ks.weight'])
 
     model.load_state_dict(checkpoint['state_dict'])
@@ -46,6 +45,14 @@ def load_checkpoint(model, optimizer, iteration, filepath, device):
     iteration = checkpoint['iteration']
 
     print(f"Load model and optimizer state at iteration {iteration} of {filepath}")
+
+def load_checkpoint_generator(model, filepath, iteration, device):
+    checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}', map_location=f'cuda:{device.index}')
+    model.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+    for p in model.parameters():
+        p.requires_grad_(False)
+
 
 def load_checkpoint_downstream(model, optimizer, filepath, device):
     #import pdb

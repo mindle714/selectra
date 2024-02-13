@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .selectra import Selectra
+from .selectra_quant_val_input import Selectra
 from .generator import Generator
 from .discriminator import Discriminator
 from utils.utils import *

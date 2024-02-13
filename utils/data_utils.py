@@ -67,8 +67,13 @@ class AudioSet(torch.utils.data.Dataset):
             start = 0
             if(wav_len-sr > 0) :
                 start = random.randint(0,wav_len-sr)
+            max_length = sr * 15
             
             wav = wav[start:((wav_len//200) -1) * 200]
+            
+            if (len(wav) > max_length) :
+                wav = wav[:max_length]
+                
 
             script_id = text_to_sequence(script, ['custom_english_cleaners'])
             #print(wav.shape, len(script_id))

@@ -2,7 +2,7 @@ import os, argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from modules.model import Model
+from modules.model_quant_val_input import Model
 import yaml
 from utils.data_utils import *
 from utils.writer import get_writer
@@ -85,7 +85,7 @@ def main(args):
     ### Load pre-trained model ###
     if args.iteration != None:
         load_checkpoint(model, optimizer, args.iteration, f'{output_directory}/{output_name}', device)
-        # iteration += args.iteration
+        iteration += args.iteration
 
     model.train()
     print("|-Train-| Training Start!!!")
@@ -130,7 +130,7 @@ def main(args):
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('--gpu', type=str, default='0')
-    p.add_argument('--c', type=str, default='configs/default.yaml')
+    p.add_argument('--c', type=str, default='configs/default_woojin.yaml')
     p.add_argument('--iteration', type=int, default=None)
 
     args = p.parse_args()

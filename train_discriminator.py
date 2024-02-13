@@ -13,29 +13,23 @@ def validate(model, criterion, val_loader, iteration, writer, device):
 
     model.eval()
     with torch.no_grad():
-
-        n_data, val_mlm_loss, val_disc_loss = 0, 0, 0
+        n_data, val_mlm_loss = 0, 0
         for i, batch in enumerate(tqdm.tqdm(val_loader)):
             if i == 200:
                 break
-
             n_data += len(batch[0])
             wav_padded, wav_lengths, txt_padded, txt_lengths = [
                 x.to(device) for x in batch
             ]
-            mlm_loss, disc_loss, mlm_acc = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
-            
+            mlm_loss, mlm_acc = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
             val_mlm_loss  += mlm_loss.item() * len(batch[0])
-            val_disc_loss += disc_loss.item() * len(batch[0])
 
         val_mlm_loss /= n_data
-        val_disc_loss /= n_data
-
-        print(f'|-Validation-| Iteration:{iteration} mlm loss:{val_mlm_loss:.3f} disc loss:{val_disc_loss:.3f} mlm_acc(%):{mlm_acc.item():.3f}')
+        print(f'|-Validation-| Iteration:{iteration} mlm loss:{val_mlm_loss:.3f} mlm_acc(%):{mlm_acc.item():.3f}')
 
     writer.add_losses(val_mlm_loss, iteration, 'Validation', 'mlm_loss')
-    writer.add_losses(val_disc_loss, iteration, 'Validation', 'disc_loss')
     writer.add_losses(mlm_acc, iteration, 'Validation', 'mlm_acc')
+
     model.train()
     
     
@@ -46,13 +40,14 @@ def main(args):
 
     train_steps  = config['optimization']['train_steps']
     accumulation = config['optimization']['accumulation']
-    iters_per_checkpoint = config['optimization']['iters_per_checkpoint']
+    # iters_per_checkpoint = config['optimization']['iters_per_checkpoint']
     grad_clip_thresh     = config['optimization']['grad_clip_thresh']
     lr = config['optimization']['lr']
     iters_per_validation = config['optimization']['iters_per_validation']
     accumulation     = config['optimization']['accumulation']
     output_directory = config['train']['output_directory']
-    output_name      = config['train']['output_name']
+    mode      = config['train']['mode']
+    output_name      = config['train']['output_name'] + mode
 
     device   = torch.device(f'cuda:{str(args.gpu)}')
 
@@ -72,7 +67,23 @@ def main(args):
                             collate_fn=collate_fn,
                             drop_last=True)
 
-    model     = Model(config, f'cuda:{str(args.gpu)}').to(device)
+    generator     = Model(config, f'cuda:{str(args.gpu)}').disc_model.generator.to(device)
+    pretrain_checkpoint = torch.load(f'{filepath}/checkpoint_{iteration}', map_location=f'cuda:{device.index}', strict=False)
+    generator.load_state_dict(pretrain_checkpoint['state_dict'])  
+    generator.eval()
+    
+    discriminator     = Model(config, f'cuda:{str(args.gpu)}').disc_model.discriminator.to(device)
+    if(train_steps == 0):
+        discriminator.load_state_dict(pretrain_checkpoint['state_dict'])  
+        
+    else :
+        discriminator.load_state_dict(checkpoint['state_dict'])
+        
+    
+    for p in model.parameters():
+        p.requires_grad_(False)
+        
+    model.gen_model.load_state_dict()
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=lr)
 
@@ -82,23 +93,19 @@ def main(args):
     copy_file(config_path, os.path.join(output_directory, output_name, config_path.split('/')[-1]))
     loss = 0
     iteration = 0
-    ### Load pre-trained model ###
-    if args.iteration != None:
-        load_checkpoint(model, optimizer, args.iteration, f'{output_directory}/{output_name}', device)
-        # iteration += args.iteration
+
 
     model.train()
     print("|-Train-| Training Start!!!")
+    print("|-Mode-| ", mode)
     while iteration < (train_steps * accumulation):
         for i, batch in enumerate(train_loader):
             wav_padded, wav_lengths, txt_padded, txt_lengths = [
                 x.to(device) for x in batch
             ]
-
-            mlm_loss, disc_loss, mlm_acc = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
-            tot_loss = mlm_loss + disc_loss
-
-            sub_loss = (tot_loss)/accumulation
+            
+            mlm_loss, mlm_acc = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
+            sub_loss = (mlm_loss)/accumulation
             sub_loss.backward()
             loss = loss+sub_loss.item()
 
@@ -110,9 +117,8 @@ def main(args):
                 optimizer.zero_grad()
                     
                 writer.add_losses(mlm_loss.item(), iteration, 'Train', 'mlm_loss')
-                writer.add_losses(disc_loss.item(), iteration, 'Train', 'disc_loss')
                 writer.add_losses(mlm_acc.item(), iteration, 'Train', 'mlm_acc')
-                print(f'|-Train-| Iteration:{iteration} mlm loss:{mlm_loss.item():.3f} disc loss:{disc_loss.item():.3f} mlm_acc(%):{mlm_acc.item():.3f}')
+                print(f'|-Train-| Iteration:{iteration} mlm loss:{mlm_loss.item():.3f} mlm_acc(%):{mlm_acc.item():.3f}')
                 loss=0
 
             if iteration%(iters_per_validation*accumulation)==0:

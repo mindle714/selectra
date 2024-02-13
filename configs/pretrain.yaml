@@ -1,7 +1,7 @@
 train:
   seed: 1234
   output_directory: '/data/yeonahong/training_log'
-  output_name: 'base_240111_1200_batch_2_32_20_200_from_0_to_1_no_limit'
+  output_name: 'base_240111_1200_batch_2_32_20_200_from_0_to_1_prob_0.5_normal'
   data_path: '/data/yeonahong/LibriSpeech'
   training_files: '/data/yeonahong/LibriSpeech/pretrain_libri_train.txt'
   validation_files: '/data/yeonahong/LibriSpeech/pretrain_libri_test.txt'

@@ -1,13 +1,13 @@
 train: 
   seed: 1234
   output_directory: '/data/yeonahong/training_log'
-  output_name: 'base_240213_1630_batch_4_rvq_6_prob_0.15_lr_0.0002'
+  output_name: 'base_240126_1900_batch_16_512_16_4_rvq_0_prob_0.65_normal_0.0005_gen_only_woojin'
   data_path: '/data/yeonahong/LibriSpeech'
   training_files: '/data/yeonahong/LibriSpeech/pretrain_libri_train.txt'
   validation_files: '/data/yeonahong/LibriSpeech/pretrain_libri_test.txt'
-  mode : 'weight_share'
-  batch_size: 4
-  selectra_checkpoint: 99800
+  mode : 'default'
+  batch_size: 6
+  selectra_checkpoint: 22000
 
 data:
   sampling_rate: 16000
@@ -15,12 +15,12 @@ data:
 model:
   n_symbols: 27 # alphabet (26) + blank (1)
   hidden_dim: 512
-  enc_hidden_dim: 256
+  enc_hidden_dim: 768
 
 optimization:
-  lr: 0.0002
+  lr: 0.0005
   grad_clip_thresh: 5.0
-  accumulation: 16
+  accumulation: 4
   iters_per_validation: 50
-  iters_per_checkpoint: 50
+  iters_per_checkpoint: 200
   train_steps: 400000

@@ -87,6 +87,12 @@ class SoundStream(nn.Module):
             e = self.encoder(x)
             _, indices, _ = self.quantizer(e.permute((0,2,1)))
             return indices
+        
+        if mode == 'contents':
+            e = self.encoder(x)
+            _, indices, _ = self.quantizer(e.permute((0,2,1)))
+            codebook_contents = self.quantizer.get_seperated_output_from_indices(indices)
+            return codebook_contents
 
 class EncoderBlock(nn.Module):
     def __init__(self, out_channels, stride):
