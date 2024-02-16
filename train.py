@@ -14,7 +14,7 @@ def validate(model, criterion, val_loader, iteration, writer, device):
     model.eval()
     with torch.no_grad():
 
-        n_data, val_mlm_loss, val_disc_loss = 0, 0, 0
+        n_data, val_mlm_loss, val_disc_loss = 0, 0, 0, 0
         for i, batch in enumerate(tqdm.tqdm(val_loader)):
             if i == 200:
                 break
@@ -24,15 +24,20 @@ def validate(model, criterion, val_loader, iteration, writer, device):
                 x.to(device) for x in batch
             ]
             mlm_loss, disc_loss, mlm_acc = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
-            
+            # mlm_loss, disc_loss, mlm_acc, mse_loss = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
+
+            # val_mse_loss  += mse_loss.item() * len(batch[0])            
             val_mlm_loss  += mlm_loss.item() * len(batch[0])
             val_disc_loss += disc_loss.item() * len(batch[0])
 
+        val_mse_loss /= n_data
         val_mlm_loss /= n_data
         val_disc_loss /= n_data
 
         print(f'|-Validation-| Iteration:{iteration} mlm loss:{val_mlm_loss:.3f} disc loss:{val_disc_loss:.3f} mlm_acc(%):{mlm_acc.item():.3f}')
+        # print(f'|-Validation-| Iteration:{iteration} mlm loss:{val_mlm_loss:.3f} mse loss:{val_mse_loss:.3f} disc loss:{val_disc_loss:.3f} mlm_acc(%):{mlm_acc.item():.3f}')
 
+    # writer.add_losses(val_mse_loss, iteration, 'Validation', 'mse_loss')
     writer.add_losses(val_mlm_loss, iteration, 'Validation', 'mlm_loss')
     writer.add_losses(val_disc_loss, iteration, 'Validation', 'disc_loss')
     writer.add_losses(mlm_acc, iteration, 'Validation', 'mlm_acc')
@@ -96,6 +101,7 @@ def main(args):
             ]
 
             mlm_loss, disc_loss, mlm_acc = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
+            # mlm_loss, disc_loss, mlm_acc, mse_loss = model(wav_padded, wav_lengths, txt_padded, txt_lengths, criterion)
             tot_loss = mlm_loss + disc_loss
 
             sub_loss = (tot_loss)/accumulation
@@ -108,10 +114,12 @@ def main(args):
                 nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
                 optimizer.step()
                 optimizer.zero_grad()
-                    
+
+                # writer.add_losses(mse_loss.item(), iteration, 'Train', 'mse_loss')                
                 writer.add_losses(mlm_loss.item(), iteration, 'Train', 'mlm_loss')
                 writer.add_losses(disc_loss.item(), iteration, 'Train', 'disc_loss')
                 writer.add_losses(mlm_acc.item(), iteration, 'Train', 'mlm_acc')
+                # print(f'|-Train-| Iteration:{iteration} mlm loss:{mlm_loss.item():.3f} mse loss:{mse_loss.item():.3f} disc loss:{disc_loss.item():.3f} mlm_acc(%):{mlm_acc.item():.3f}')
                 print(f'|-Train-| Iteration:{iteration} mlm loss:{mlm_loss.item():.3f} disc loss:{disc_loss.item():.3f} mlm_acc(%):{mlm_acc.item():.3f}')
                 loss=0
 
