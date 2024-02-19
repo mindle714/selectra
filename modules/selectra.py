@@ -33,98 +33,109 @@ class Selectra(nn.Module):
         self.num_quant, self.quant_emb, self.quant_dim = self.codec.quantizer.codebooks.shape
         
         self.selected_num_quant = 16 # 사용할 rvq 개수 (1~16)
+        self.post_proj = nn.Linear(self.selected_num_quant, self.enc_emb)
         self.selectra = TransformerEncoder(
             enc_layers, self.enc_emb, self.enc_emb, self.enc_emb*4,
             dropout = 0., layerdrop = 0.)
-        self.gen_projs = [nn.Linear(self.enc_emb, \
-            self.quant_emb, bias = False, device=dev) \
-            for _ in range(self.selected_num_quant)]
+        
+        # self.gen_split = nn.Linear(1, self.selected_num_quant)
+        # self.gen_projs = [nn.Linear(self.enc_emb, \
+        #     self.quant_emb, bias = False, device=dev) \
+        #     for _ in range(self.selected_num_quant)]
+        self.gen_projs_split = nn.Linear(1, self.selected_num_quant)
+        self.gen_projs = nn.Linear(self.enc_emb, self.quant_emb)
+        self.disc_proj = nn.Linear(self.enc_emb, 2)
+        
+        # self.discriminator = TransformerEncoder(
+        #     enc_layers, self.enc_emb, self.enc_emb, self.enc_emb*4,
+        #     dropout = 0., layerdrop = 0.)
 
         self.disc_proj_1 = nn.Linear(self.enc_emb, self.enc_emb)
-        self.disc_proj_2 = nn.Linear(self.enc_emb, 1)
+        self.disc_proj_2 = nn.Linear(self.enc_emb, self.selected_num_quant)
         self.disc_loss_fn = nn.BCEWithLogitsLoss()
 
-    def forward(self, x, padding_mask = None, mask = False):
+    def forward(self, wav, padding_mask = None, mask = False):
         self.codec.eval()
 
-        x = x.unsqueeze(1)
-        x_in = self.codec(x, mode='contents').detach()
-        x_q = self.codec(x, mode='quantize').detach()
-        x_in = x_in[:self.selected_num_quant,:,:,:] #(6, 2, 978, 256)
-        # x_origin = x_in
-        x_q = x_q[:,:,:self.selected_num_quant] #(2, 978, 6)
-                
-        origin_codes_summed = reduce(x_in, 'q ... -> ...', 'sum') #(2, 978, 256)
+        wav = wav.unsqueeze(1)
+
+        x = self.codec(wav, mode='quantize').detach().permute(0,2,1) #B,256,T
+        x_q = self.codec(wav, mode='quantize').detach() #B,T,n_q
+        # x_q_summed = self.codec(wav, mode='encode').detach()
+        
+        # x_q = reduce(x_q, 'q ... -> ...', 'sum') #(2, 978, 256)
         if not mask:
-            x_disc = self.selectra(origin_codes_summed)
+            x_disc = self.selectra(x_q)
             return x_disc
-        
-        n_q, B, T, C = x_in.shape
-        
-        # pdb.set_trace()
-        
-        for i in range(self.selected_num_quant):            
-            mask_indices = compute_mask_indices(
-                (B, T), padding_mask,
-                self.mask_prob, self.mask_length,
-                'static', 0.,
-                min_masks=2, no_overlap=False, min_space=1,
-                require_same_masks=True, mask_dropout=0.
-            )
-            mask_indices = torch.from_numpy(mask_indices).to(x_in[i].device)
-            x_in[i][mask_indices] = self.mask_emb
-            if i==0:
-                tot_mask_indices = mask_indices.unsqueeze(2)    
-            else:
-                tot_mask_indices = torch.cat((tot_mask_indices, mask_indices.unsqueeze(2)), dim=2)
-        
-        codes_summed = reduce(x_in, 'q ... -> ...', 'sum') #(2,978,256)
-        x_in = self.selectra(codes_summed) #(2,978,256)
 
-        x_projs = []
+        x = self.post_proj(x.permute(0,2,1).float())
+        B, T, C = x.shape
+        # B,n_q,T = x.shape
+        mask_indices = compute_mask_indices(
+            (B, T), padding_mask,
+            self.mask_prob, self.mask_length,
+            'static', 0.,
+            min_masks=2, no_overlap=False, min_space=1,
+            require_same_masks=True, mask_dropout=0.
+        )
+        mask_indices = torch.from_numpy(mask_indices).to(x.device)
+        
+        x[mask_indices] = self.mask_emb
+        x = self.selectra(x) #B,T,256
+
+        # x_projs = []
         x_indices = []
-
-        for i in range(len(self.gen_projs)):
-            x_proj = self.gen_projs[i](x_in) #(2, 978, 1024)
-            x_projs.append(x_proj.transpose(2, 1))
-
-            uniform_ns = torch.rand(x_proj.shape)
+        
+        # x_split = self.gen_split(x.unsqueeze(-1)).permute(3,0,1,2)
+        # x_split_sum_hat = torch.sum(x_split, dim=0)
+        
+        x_proj = self.gen_projs_split(x.unsqueeze(-1)).permute(0,1,3,2) #B,T,n_q,256
+        x_proj = self.gen_projs(x_proj) # B,T,n_q,1024
+        for i in range(self.selected_num_quant):
+            # x_proj = self.gen_projs[i](x) #(2, 978, 1024)
+            # x_projs.append(x_proj.permute(2,0,1,3)[i]) # input n_q,B,T,1024 -> B,T,1024
+            x_proj_temp = x_proj.permute(2,0,1,3)[i]
+            uniform_ns = torch.rand(x_proj_temp.shape)
             gumbel_ns = -torch.log(-torch.log(uniform_ns + 1e-9) + 1e-9)
-            logits = F.softmax(x_proj + gumbel_ns.to(x_in.device), -1)
+            logits = F.softmax(x_proj_temp + gumbel_ns.to(x.device), -1)
             indices = torch.argmax(logits, -1)
             x_indices.append(indices)
-
-        x_projs = torch.stack(x_projs, -1) #(2, 1024, 978, 6)
+        # x_projs = torch.stack(x_projs, -1) #(2, 1024, 978, 6) B,1024,T,n_q
+        x_projs = x_proj.permute(0,3,1,2) # B,1024,T,n_q
         # x_origin : (6, 2, 978, 256)
         # x_q : #(2, 978, 6)
-        x_indices = torch.stack(x_indices, -1) #(2, 978, 6)
+        x_indices = torch.stack(x_indices, -1) #(2, 978, 6) B,T,n_q
         # TODO temporary fix; need to add padding scheme same as soundstream
         if x_q.shape[1] > x_indices.shape[1]:
             x_q = x_q[:,:x_indices.shape[1],:]
         out_acc = accuracy(x_indices, x_q, 'libri')
-        
         # [B,T,n_q]끼리 비교후 해당 frame의 n_q가 모두 같을 떄 True로 disc_label 구하기
         disc_label = x_indices == x_q
-        disc_label = torch.all(disc_label, dim=-1)
+        # disc_label = torch.all(disc_label, dim=-1)
         disc_label = disc_label.int()
 
-        mlm_loss = F.cross_entropy(x_projs, x_q.long(), reduction='none') #(2, 978, 6)
+        mlm_loss = F.cross_entropy(x_projs, x_q.long(), reduction='none') #(B, T, n_q)
         ##################### MSE #####################
-        # mse_loss = F.mse_loss(origin_codes_summed, x_in)
+        # n_q_l1_loss = F.l1_loss(x_q_summed, x_split_sum_hat)
         # print(mask_indices.unsqueeze(-1).shape)
         # (2, 978, 1)
-        mlm_loss = (tot_mask_indices * mlm_loss).sum()
-        mlm_loss = mlm_loss / tot_mask_indices.sum()
+        mlm_loss = (mask_indices.unsqueeze(-1) * mlm_loss).sum()
+        mlm_loss /= mask_indices.sum()
 
-        x_disc = self.selectra(x_in)
+        x_disc = self.selectra(x)
+        # x_disc = self.discriminator(x_in)
+        
+        # disc_loss = F.cross_entropy(x_disc.transpose(2,1), mask_indices.long())
         
         x_disc = F.relu(self.disc_proj_1(x_disc))
-        x_disc = self.disc_proj_2(x_disc).squeeze(-1)
+        x_disc = self.disc_proj_2(x_disc)#.squeeze(-1)
         x_disc = F.sigmoid(x_disc)
         disc_loss = self.disc_loss_fn(x_disc, disc_label.float())
-
-        return mlm_loss, disc_loss, out_acc
-    # , mse_loss
+        # self.discriminator = TransformerEncoder(
+        #     enc_layers, self.enc_emb, self.enc_emb, 3072,
+        #     dropout = 0., layerdrop = 0.)
+  
+        return mlm_loss, disc_loss, out_acc#, n_q_l1_loss
 def make_conv_pos(e, k, g):
     pad = nn.ConstantPad1d(((k//2)-1, k//2), 0)
     pos_conv = nn.Conv1d(
